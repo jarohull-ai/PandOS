@@ -79,16 +79,33 @@ w `archinstall/lib/models/device.py`), dodając `@snapshots`→`/.snapshots` do
 listy domyślnej. Finalna lista do użycia: `@`, `@home`, `@log`, `@pkg`,
 `@snapshots`.
 
-### Mechanizm rollbacku — W TRAKCIE WERYFIKACJI (2026-10-22)
+### Mechanizm rollbacku — POTWIERDZONE empirycznie (2026-10-22)
 
-Wiki opisuje przywracanie `@` (root) jako procedurę ręczną z Live CD, nie
-przez komendę `snapper rollback` z działającego systemu. Dla celu "jedno
-kliknięcie" dla nietechnicznego użytkownika kandydatem jest
+Zweryfikowane w realnej VM (archinstall → arch-chroot → QEMU/UEFI → SSH),
+dwukrotnie: raz ręczną podmianą subwolumenu, raz prawdziwym narzędziem.
+Pełny log i procedura w [`tests/btrfs-rollback-verification.md`](tests/btrfs-rollback-verification.md).
+
+**Odrzucona hipoteza:** `btrfs subvolume set-default` — nietestowalna z
+definicji, bo `grub-mkconfig` wpisuje `rootflags=subvol=@` na twardo w linię
+jądra, więc zmiana "domyślnego subwolumenu" btrfs nic by nie zmieniła w tym,
+co się bootuje.
+
+**Działający mechanizm:** rename-swap na poziomie top-level btrfs
+(`subvolid=5`) — bieżący `@` zmienia nazwę na backup, nowy zapisywalny `@`
+powstaje jako snapshot wybranego punktu przywracania. Działa **w pełni z
+działającego, zabootowanego systemu, bez Live USB** (sesja SSH przetrwała
+całą operację). Po reboot: root przywrócony, `/home` nienaruszone.
+
 [Btrfs Assistant](https://gitlab.com/btrfs-assistant/btrfs-assistant)
-(pakiet `btrfs-assistant`, oficjalne repo `extra`, nie AUR) — raporty z forum
-(EndeavourOS) wskazują, że GUI "przywróć + reboot" działa z działającego
-systemu bez Live USB. **Niepotwierdzone źródłowo z pierwszej ręki, test w VM
-w toku** — zobacz `tests/` po zakończeniu.
+(pakiet `btrfs-assistant`, `extra`, nie AUR) ma gotowy, headless tryb CLI
+(`btrfs-assistant --list` / `--restore <indeks>`, działa z
+`QT_QPA_PLATFORM=offscreen`, bez GUI) — **potwierdzone, że robi dosłownie
+ten sam rename-swap**, nie trzeba reimplementować mechanizmu samemu. To
+jest kandydat do wywołania bezpośrednio z UI/wrappera PandOS.
+
+**Otwarte na później:** sprzątanie starych `@_backup_*` po rollbacku
+(nieautomatyczne), zachowanie GUI (nie tylko CLI) narzędzia — niesprawdzone,
+brak środowiska graficznego w teście.
 
 ### Lista pakietów — draft (2026-10-22)
 

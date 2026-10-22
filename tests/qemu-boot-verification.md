@@ -281,16 +281,22 @@ Dwie niezależne, uzupełniające się opcje — zalecane wdrożenie obu:
 
 ### Co NIE jest w tym momencie potwierdzone (świadomie, do zrobienia w następnej iteracji)
 
-- Czy po poprawce `bootindex` zainstalowany system faktycznie bootuje do
-  końca (COSMIC, SSH jako `pandos`, Snapper) **z ISO/`cidata`** — ten
-  konkretny test (scenariusz B w całości) nie został jeszcze domknięty.
-- Dokładna przyczyna `fatal library error, lookup self` w hooku snapper —
-  nieistotna dla pętli opisanej wyżej, ale warta osobnego sprawdzenia przy
-  następnym przebiegu (np. `journalctl` w zainstalowanym systemie po
-  pierwszym udanym boocie).
 - Dokładna liczba pełnych cykli reinstalacji w tej 6-godzinnej sesji —
   zaobserwowano **co najmniej 3** bezpośrednio przez zrzuty QMP, realna
   liczba może być wyższa (zrzuty robione punktowo, nie w sposób ciągły).
+  Nieistotne po fakcie — przyczyna (brak `bootindex`) już zidentyfikowana i
+  poprawiona, patrz niżej.
+
+### ⚠️ Znany problem, NIEBLOKUJĄCY (do zbadania później, nie teraz)
+
+`fatal library error, lookup self` pojawia się w logu hooka pacmana
+(prawdopodobnie `snap-pac` lub `grub-btrfsd` przy próbie odczytu
+`/proc/self/exe` w `arch-chroot`) w trakcie `(21/21) Performing snapper post
+snapshots...` podczas instalacji pakietów. **Nie wpływa na wynik** — build
+kończy się poprawnie, system bootuje, Snapper/Btrfs działają zweryfikowane
+(patrz sekcja niżej). Ale nie jest zbadane, skąd dokładnie się bierze. Do
+sprawdzenia kiedyś przez `journalctl` w zainstalowanym systemie, **nie przed
+ogłoszeniem MVP** — to nie blokuje domknięcia ISO.
 
 ### Poprawka `bootindex` — WDROŻONA I POTWIERDZONA (ten sam dzień, kolejny przebieg)
 

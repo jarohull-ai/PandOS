@@ -1,0 +1,14 @@
+[Unit]
+Description=PandOS unattended install (if a cidata-labeled drive is present)
+After=local-fs.target systemd-udev-settle.service
+Wants=systemd-udev-settle.service
+ConditionPathExists=!/etc/pandos-autoinstall-done
+
+[Service]
+Type=oneshot
+ExecStart=/root/pandos/autoinstall.sh
+RemainAfterExit=yes
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target

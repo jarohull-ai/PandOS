@@ -216,6 +216,18 @@ jest w toku — to jest spisanie stanu, nie nowa praca:
 | 4 | Rozproszenie / lokalne modele | **Brak jeszcze design docu** — odrzucone na teraz, nie spisane; priorytet dopiero po MVP ISO, jeśli w ogóle |
 | 5 | ISO do dystrybucji dla innych (nie tylko do własnego użytku) | Otwarte pytanie, nie podjęta decyzja — do przemyślenia, jeśli PandOS ma wyjść poza użytek autora |
 
+Kontekst do punktu 4 (żeby nie był zagadką za miesiąc, bez pisania design
+docu): temat padł w briefie z 2026-10-22 — dwa poziomy, oba odłożone: (1)
+zdalna inferencja — agent/kod zostają na PandOS, zapytania do modelu idą na
+drugi komputer przez API zgodne z OpenAI (Ollama); (2) zdalne wykonywanie
+pracy — agent na drugiej maszynie dostaje worktree i wykonuje komendy, co
+wymaga kolejki/blokad/uprawnień. Argument nie jest po prostu „lokalne
+zamiast chmury" — to małe modele do wąskich zadań (formatowanie,
+klasyfikacja, boilerplate) z automatyczną eskalacją do większego
+modelu/chmury, gdy lokalny wynik nie przechodzi testów, mierzone realnymi
+oszczędnościami (odsetek zadań lokalnych, liczba eskalacji, czas). Priorytet
+dopiero po MVP ISO i po realnych pomiarach, nie z góry.
+
 ## Struktura repo
 
 `pandos-config/` (`archinstall`: `user_configuration.json`, `provision.sh`,

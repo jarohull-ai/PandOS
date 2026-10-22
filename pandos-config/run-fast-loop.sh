@@ -45,10 +45,10 @@ mount --mkdir -o subvol=/@pkg /dev/loop10p2 /mnt/var/cache/pacman/pkg
 mount --mkdir /dev/loop10p1 /mnt/boot
 
 arch-chroot /mnt /bin/bash -ex <<'CHROOT2'
-# snap-pac's pacman hook already bootstraps /etc/snapper/configs/{root,home}
-# with correct SUBVOLUME=/ and SUBVOLUME=/home during pacstrap - confirmed by
-# inspection, don't call create-config ourselves, it's redundant and fails
-# with "subvolume already covered".
+# provision.sh (custom_commands, run earlier in this same archinstall pass)
+# already created /etc/snapper/configs/{root,home} successfully. This block
+# used to redundantly call create-config again here and failed with
+# "subvolume already covered" - verify instead of recreating.
 test -f /etc/snapper/configs/root
 test -f /etc/snapper/configs/home
 grep -q 'SUBVOLUME="/"' /etc/snapper/configs/root

@@ -16,10 +16,18 @@ po instalacji.
 
 ## Status
 
-Projekt na etapie projektowania architektury, przed pierwszym działającym
-szkieletem. Ten plik rośnie wraz z projektem i jest źródłem prawdy o
-decyzjach — każda ważna decyzja architektoniczna i jej weryfikacja (albo
-obalenie) trafia tu, z datą i źródłem.
+**MVP bootuje end-to-end (2026-10-22), zweryfikowane w QEMU, nie tylko w
+teorii:** `archinstall` (config w `pandos-config/`) w jednym przebiegu
+instaluje dysk+pakiety+COSMIC+PandaCode+Snapper → system bootuje do
+graficznego greetera COSMIC → logowanie działa → pełny pulpit COSMIC się
+odpala → PandaCode startuje pod XWayland → Snapper i `snap-pac` automatycznie
+tworzą snapshoty na żywym systemie. Szczegóły i dokładne komendy w
+[`tests/full-config-verification.md`](tests/full-config-verification.md) i
+[`tests/qemu-boot-verification.md`](tests/qemu-boot-verification.md).
+
+Ten plik rośnie wraz z projektem i jest źródłem prawdy o decyzjach — każda
+ważna decyzja architektoniczna i jej weryfikacja (albo obalenie) trafia tu,
+z datą i źródłem.
 
 ## Zasady projektowe
 
@@ -178,6 +186,7 @@ teraz implementowane.
 ## Struktura repo
 
 `pandos-config/` (`archinstall`: `user_configuration.json`, `provision.sh`,
-`run-fast-loop.sh`, `docs/`) już istnieje i działa — szybka pętla
-zweryfikowana w `tests/full-config-verification.md`. `pandos-iso/` (`archiso`)
-jeszcze nie — czeka na potwierdzenie bootu w QEMU (wolna pętla, w toku).
+`run-fast-loop.sh`, `docs/`) już istnieje i działa — szybka **i** wolna
+pętla obie zweryfikowane (`tests/full-config-verification.md`,
+`tests/qemu-boot-verification.md`). `pandos-iso/` (`archiso`) jeszcze nie —
+następny krok, wydruk do instalowalnego ISO.

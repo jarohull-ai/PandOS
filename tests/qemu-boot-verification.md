@@ -118,9 +118,72 @@ bezpośrednio, nie tylko przez brak błędu.**
 zidentyfikowaną, konkretną przyczynę i gotową poprawkę do wdrożenia w
 kolejnej iteracji configu, zanim przejdziemy do `archiso`.
 
-## Artefakty
+## Artefakty (pierwszy przebieg, przed poprawkami)
 
 `screendump.png` (zrzut ekranu tty1 login prompt), `pandos-full.img` (ten sam
 obraz z testu szybkiej pętli, teraz z dodatkowym pakietem `nano` i kilkoma
 dodatkowymi snapshotami Snappera z tego testu) — oba w scratchpadzie sesji,
 nie w repo.
+
+---
+
+## Powtórka po poprawkach (2026-10-22, ten sam dzień) — WSZYSTKIE 4 PUNKTY PRZESZŁY
+
+Dwie poprawki wdrożone w `pandos-config/provision.sh`:
+1. `pacman-key --init && pacman-key --populate archlinux` na samym początku.
+2. `cp /etc/greetd/cosmic-greeter.toml /etc/greetd/config.toml` **przed**
+   `systemctl enable greetd.service` (kolejność ma znaczenie — potwierdzone).
+
+Pełna szybka pętla uruchomiona ponownie od zera na świeżym obrazie z tymi
+poprawkami (`ARCHINSTALL_EXIT_CODE=0`, `POST_PROCESSING_OK`), potem ten sam
+obraz zabootowany w QEMU jeszcze raz.
+
+### 1. Boot do COSMIC — DZIAŁA
+
+Zrzut ekranu przez QMP `screendump` pokazuje **prawdziwy graficzny greeter
+COSMIC**: zegar, data, tapeta (mgławica Oriona), pole hasła z nazwą
+użytkownika `pandos`, ikony dostępności/klawiatury/zasilania u dołu.
+Zasymulowano wpisanie hasła przez QMP `send-key` (`pandos` + Enter) —
+**pełne zalogowanie się powiodło**, kolejny zrzut ekranu pokazuje w pełni
+działający pulpit COSMIC: górny panel (Workspaces/Applications, zegar, tray
+z ikonami sieci/dźwięku/baterii), dolny dok z launcherami aplikacji.
+Weryfikacja przez SSH: wszystkie procesy `cosmic-*` (comp, panel, launcher,
+app-library, workspaces, applets, itd.) oraz `xdg-desktop-portal-cosmic`
+żywe pod użytkownikiem `pandos` na `tty1`. Software rendering w headless
+QEMU bez przekazanego GPU zadziałał bez problemu — obawa z wcześniejszego
+raportu okazała się niepotrzebna.
+
+### 2. PandaCode pod XWayland — DZIAŁA (po znalezieniu właściwego DISPLAY)
+
+Pierwsza próba (`DISPLAY=:0`) dalej panikowała na GTK — bo `:0` należy do
+**osobnej** sesji XWayland greetera (`cosmic-greeter`), nie do zalogowanej
+sesji `pandos`. Rzeczywista sesja `pandos` ma swój XWayland na `:1`
+(potwierdzone: `ps aux | grep -i xwayland` → `Xwayland :1 ...`, gniazdo
+`/tmp/.X11-unix/X1` należące do `pandos`). Z poprawnym
+`DISPLAY=:1 WAYLAND_DISPLAY=wayland-1`: **PandaCode przechodzi przez
+inicjalizację GTK bez panikowania** — zamiast tego dostaje tylko ostrzeżenia
+`MESA-EGL: DRI3 error: Could not get DRI3 device` / `failed to create dri2
+screen` — to oczekiwane ograniczenie software renderingu w headless QEMU bez
+prawdziwego GPU (`virtio-vga` bez `virgl`), nie defekt PandaCode ani naszego
+configu.
+
+### 3. Snapper — nadal DZIAŁA bez zmian
+
+`snapper --no-dbus list-configs` → `root`/`home` poprawnie.
+
+### 4. snap-pac — DZIAŁA, TERAZ bez żadnej ręcznej naprawy w locie
+
+`pacman -S nano` **za pierwszym razem, bez błędu keyringu** (w przeciwieństwie
+do pierwszego przebiegu testu) — `pacman-key --populate archlinux` wbudowane
+w `provision.sh` rozwiązało to raz na zawsze przy budowie obrazu. Pre/post
+snapshoty (`#1 pre` / `#2 post`, poprawny opis `pacman -S --noconfirm nano`)
+utworzone automatycznie.
+
+## Wniosek
+
+**MVP configu jest kompletne i w pełni zweryfikowane end-to-end**: instalacja
+przez `archinstall` w jednym przebiegu → boot w QEMU → graficzny COSMIC →
+zalogowanie → PandaCode się odpala → Snapper/`snap-pac` działają automatycznie
+na żywym systemie. Jedyne pozostałe ograniczenie to brak akceleracji GPU w
+tym konkretnym środowisku testowym (headless QEMU, software rendering) — nie
+dotyczy poprawności samego configu PandOS.

@@ -1,5 +1,13 @@
 set -ex
 
+# --- pacman keyring: pacstrap doesn't always leave every maintainer key
+# trusted, discovered when `pacman -S nano` failed with "unknown trust" in
+# the previous boot test. Must run before anything later needs trusted
+# signatures (nothing in this script does yet, but a built PandOS image
+# needs this done once at build time, not left to the first live `pacman -S`).
+pacman-key --init
+pacman-key --populate archlinux
+
 # --- locale / timezone / console ---
 echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
 locale-gen
@@ -33,6 +41,12 @@ ExecStart=
 ExecStart=/usr/bin/grub-btrfsd --syslog /.snapshots
 EOF
 systemctl enable grub-btrfsd.service
+
+# --- greetd + cosmic-greeter: config BEFORE enable, order matters (greetd
+# reads config.toml at start; enabling first would leave it pointed at the
+# bundled agreety text greeter, confirmed in the previous boot test). ---
+cp /etc/greetd/cosmic-greeter.toml /etc/greetd/config.toml
+systemctl enable greetd.service
 
 # --- PandaCode ---
 mkdir -p /opt/pandacode

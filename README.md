@@ -1,5 +1,9 @@
 # PandOS
 
+<p align="center">
+  <img src="assets/pandos-mascot.png" width="420" alt="Maskotka PandOS — panda z łapami pingwina">
+</p>
+
 Instalowalny Linux dla osób, które traktują agentów AI jako główny sposób
 pracy z komputerem. [PandaCode](https://github.com/aicodeking/pandacode) jest
 głównym punktem wejścia, a nie tylko kolejną aplikacją obok terminala czy

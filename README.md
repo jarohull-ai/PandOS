@@ -1,8 +1,14 @@
 # PandOS
 
-Instalowalny Linux dla osób nietechnicznych, w którym [PandaCode](https://github.com/aicodeking/pandacode)
-jest punktem wejścia zamiast terminala czy menedżera plików. Czysty obraz bez
-kluczy API — dostawcę konfiguruje się samemu po instalacji.
+Instalowalny Linux dla osób, które traktują agentów AI jako główny sposób
+pracy z komputerem. [PandaCode](https://github.com/aicodeking/pandacode) jest
+głównym punktem wejścia, a nie tylko kolejną aplikacją obok terminala czy
+menedżera plików.
+
+PandOS powstaje przede wszystkim jako codzienne środowisko pracy autora i jest
+kierowany do ludzi pracujących w podobny sposób. Obraz pozostaje czysty — bez
+wbudowanych kluczy API; dostawcę i używane agenty konfiguruje się samodzielnie
+po instalacji.
 
 ## Status
 
@@ -15,8 +21,8 @@ obalenie) trafia tu, z datą i źródłem.
 
 1. **PandaCode jako punkt wejścia**, nie jedna z wielu aplikacji.
 2. **Czysty system, bez kluczy** — żadnych tokenów/API keys w obrazie ISO.
-3. **Dostępny dla zwykłych użytkowników, otwarty dla deweloperów** — domyślnie
-   proste doświadczenie, bez blokowania trybu zaawansowanego.
+3. **Prosty domyślnie, otwarty w środku** — spójne doświadczenie agent-first,
+   bez ukrywania systemu i bez blokowania trybu zaawansowanego.
 
 ## Decyzje architektoniczne
 

@@ -61,6 +61,20 @@ Python do provisioningu, nie Rust — `archinstall` ma natywne API Pythona
 Argumenty za Rustem (spójność z PandaCode, bezpieczeństwo pamięci) nie mają
 zastosowania do jednorazowego skryptu instalacyjnego.
 
+**Korekta szybkiej pętli (2026-10-22, z testu w `tests/` + wkładem DeepSeeka,
+potwierdzona w źródle):** `archinstall` w gołym kontenerze `--privileged` nie
+da się odpalić end-to-end — woła `localectl`/`systemctl` przez D-Bus, co wymaga
+żywego systemd jako PID 1. Nie inwestujemy w `systemd-nspawn` na tym etapie.
+Rozwiązanie: w configu JSON pomijamy `locale_config` i `bootloader_config` —
+sprawdzone w źródle (`archinstall/lib/installer.py:964-966`,
+`archinstall/scripts/guided.py:117`), że oba kroki są warunkowe (`if
+locale_config:` / `if config.bootloader_config:`) i po prostu się nie wykonują,
+gdy pola są nieobecne. Zamiast nich — `custom_commands` (pole configu,
+wykonywane na końcu instalacji przez `arch-chroot`, `guided.py:181`): locale,
+hostname, user, `bootctl`/`grub-install`, `systemctl enable`. `systemctl
+enable` działa bez żywego systemd (tylko symlinki plików jednostek) —
+w przeciwieństwie do `localectl`, który faktycznie pyta demona.
+
 ### Układ subwolumenów Btrfs (potwierdzone z wiki.archlinux.org/title/Snapper + źródła archinstall, 2026-10-22)
 
 Wiki sugeruje `@`→`/`, `@home`→`/home`, `@snapshots`→`/.snapshots`,

@@ -25,6 +25,16 @@ tworzą snapshoty na żywym systemie. Szczegóły i dokładne komendy w
 [`tests/full-config-verification.md`](tests/full-config-verification.md) i
 [`tests/qemu-boot-verification.md`](tests/qemu-boot-verification.md).
 
+**Instalowalne ISO zweryfikowane end-to-end (2026-10-22):** `pandos-iso/`
+(fork profilu `releng` archiso) buduje się, bootuje w QEMU, wykrywa dysk
+`cidata` i odpala `archinstall` w pełni bezobsługowo — system instaluje się i
+bootuje do działającego COSMIC za pierwszym razem, bez ręcznej ingerencji.
+PandOS przestaje być configiem testowanym tylko w szybkiej pętli i staje się
+realnym, instalowalnym systemem. Szczegóły, w tym napotkana i naprawiona
+pułapka z kolejnością bootowania w QEMU, w
+[`tests/qemu-boot-verification.md`](tests/qemu-boot-verification.md)
+(sekcja „Scenariusz B").
+
 Ten plik rośnie wraz z projektem i jest źródłem prawdy o decyzjach — każda
 ważna decyzja architektoniczna i jej weryfikacja (albo obalenie) trafia tu,
 z datą i źródłem.

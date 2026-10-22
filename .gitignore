@@ -1,0 +1,12 @@
+# Build artifacts (images, ISOs) — too large and not source, never commit
+*.iso
+*.img
+*.qcow2
+*.qcow2.*
+release/
+work/
+.cache/
+
+# OS/editor cruft
+.DS_Store
+*.swp

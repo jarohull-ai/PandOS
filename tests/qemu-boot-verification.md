@@ -291,3 +291,62 @@ Dwie niezależne, uzupełniające się opcje — zalecane wdrożenie obu:
 - Dokładna liczba pełnych cykli reinstalacji w tej 6-godzinnej sesji —
   zaobserwowano **co najmniej 3** bezpośrednio przez zrzuty QMP, realna
   liczba może być wyższa (zrzuty robione punktowo, nie w sposób ciągły).
+
+### Poprawka `bootindex` — WDROŻONA I POTWIERDZONA (ten sam dzień, kolejny przebieg)
+
+Poprawka #1 z sekcji wyżej wdrożona bezpośrednio w poleceniu QEMU (nie w
+repo — to parametr testowego harnessu, nie configu PandOS): dysk docelowy
+podpięty przez `-device virtio-blk-pci,drive=...,bootindex=1`, CD-ROM przez
+`-device virtio-blk-pci,drive=...,bootindex=2` (zwykłe `-drive ...,bootindex=N`
+nie działa z `format=raw` — QEMU wymaga jawnego `-device` dla tej opcji,
+potwierdzone błędem przy pierwszej próbie: *"Block format 'raw' does not
+support the option 'bootindex'"*).
+
+**Wynik: boot z dysku zadziałał za pierwszym razem, bez powrotu do CD-ROM.**
+Zrzut ekranu QMP od razu po starcie VM (dysk zawierał już dane z wcześniej
+ukończonego cyklu instalacji z tej samej sesji) pokazał **graficzny greeter
+COSMIC z użytkownikiem `pandos`** — nie konsolowy instalator. Zasymulowane
+logowanie przez QMP `send-key` → **pełny, zalogowany pulpit COSMIC**
+(Workspaces/Applications, zegar, tray, dok z launcherami).
+
+Weryfikacja przez SSH (port 2227) na żywym, zainstalowanym systemie:
+
+```
+$ systemctl is-active graphical.target greetd
+active
+active
+
+$ cat /etc/os-release | head -3
+NAME="Arch Linux"
+
+$ sudo btrfs subvolume list /
+ID 256 gen 27 top level 5 path @
+ID 257 gen 27 top level 5 path @home
+ID 258 gen 27 top level 5 path @log
+ID 259 gen 13 top level 5 path @pkg
+ID 264 gen 18 top level 5 path @snapshots       (top-level, jak zaplanowano)
+ID 263 gen 16 top level 257 path @home/.snapshots  (snap-pac, oczekiwane)
+
+$ sudo snapper --no-dbus -c root list
+0 | single | ... | current
+
+$ cat /etc/pandos-root-marker.txt /home/pandos/home-marker.txt
+pandos-root-before-change
+home-marker: should survive any root rollback
+```
+
+Układ subwolumenów dokładnie zgodny z projektem (`@`, `@home`, `@log`,
+`@pkg`, `@snapshots` top-level). `PandaCode.AppImage` obecny
+(93 854 200 bajtów, wykonywalny). Uruchomienie go przez SSH bez sesji
+graficznej panikuje na GTK — **to ten sam, już wcześniej udokumentowany i
+zrozumiany przypadek** (brak `DISPLAY`/`WAYLAND_DISPLAY` w sesji SSH, patrz
+punkt 2 w teście powyżej), nie nowy problem — nie powtarzano pełnej
+weryfikacji z poprawnym `DISPLAY`, bo mechanizm już potwierdzony wcześniej
+na tym samym configu.
+
+**Wniosek: scenariusz B (ISO + `cidata`, w pełni bezobsługowa instalacja)
+działa end-to-end.** Jedyną rzeczywistą usterką była kolejność bootowania w
+testowym poleceniu QEMU — po jej poprawieniu system bootuje bezpośrednio do
+działającego COSMIC za pierwszym razem, bez pętli. Poprawka `bootindex`
+powinna zostać zapisana na stałe w docelowym skrypcie uruchamiającym testy
+QEMU dla tego projektu (do zrobienia przy porządkowaniu `pandos-iso/`).

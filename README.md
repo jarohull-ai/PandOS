@@ -193,10 +193,33 @@ przed MVP.** Mamy już działający, zweryfikowany ręczny rollback przez
 jako punkt wyjścia, gdyby ta potrzeba kiedyś wróciła, ale nic z niego nie jest
 teraz implementowane.
 
+### Rozproszenie / lokalne modele — NIE odłożona jako dokument, tylko odrzucona na teraz (2026-10-22)
+
+W odróżnieniu od warstwy transakcyjnej, ten pomysł (agenci rozproszeni,
+lokalne modele przez Ollama, uprawnienia `pandos-tx` dla agentów) **nie ma
+jeszcze design docu w repo** — padła wprost decyzja „nie teraz, wracamy
+czysto do ISO" i temat nie został nawet spisany. Jeśli ma wrócić, najpierw
+potrzebuje własnego dokumentu (analogicznego do
+`pandos-config/docs/transactional-layer.md`), nie od razu implementacji.
+
+## Co dalej (po MVP ISO)
+
+Krótka lista priorytetów po domknięciu instalowalnego ISO (2026-10-22), żeby
+nic nie trzeba było sobie przypominać za tydzień. Żaden z tych punktów nie
+jest w toku — to jest spisanie stanu, nie nowa praca:
+
+| # | Temat | Status |
+|---|-------|--------|
+| 1 | Bridge sieciowy zamiast `user`/NAT w testach QEMU | Do rozważenia — przyspieszyłoby kolejne iteracje testów ISO, niewdrożone, niezapisane gdzie indziej niż tu |
+| 2 | `fatal library error, lookup self` w hooku pacmana | Nieblokujące, do zbadania kiedyś (patrz `tests/qemu-boot-verification.md`) |
+| 3 | Warstwa transakcyjna (`pandos-tx`) | Design doc gotowy (`pandos-config/docs/transactional-layer.md`), implementacja odłożona do decyzji o priorytecie |
+| 4 | Rozproszenie / lokalne modele | **Brak jeszcze design docu** — odrzucone na teraz, nie spisane; priorytet dopiero po MVP ISO, jeśli w ogóle |
+| 5 | ISO do dystrybucji dla innych (nie tylko do własnego użytku) | Otwarte pytanie, nie podjęta decyzja — do przemyślenia, jeśli PandOS ma wyjść poza użytek autora |
+
 ## Struktura repo
 
 `pandos-config/` (`archinstall`: `user_configuration.json`, `provision.sh`,
-`run-fast-loop.sh`, `docs/`) już istnieje i działa — szybka **i** wolna
-pętla obie zweryfikowane (`tests/full-config-verification.md`,
-`tests/qemu-boot-verification.md`). `pandos-iso/` (`archiso`) jeszcze nie —
-następny krok, wydruk do instalowalnego ISO.
+`run-fast-loop.sh`, `docs/`) i `pandos-iso/` (`archiso`: `configs/pandos/`,
+`test-qemu-boot.sh`) już istnieją i działają — szybka pętla, wolna pętla i
+instalacja z ISO wszystkie trzy zweryfikowane
+(`tests/full-config-verification.md`, `tests/qemu-boot-verification.md`).

@@ -187,3 +187,107 @@ zalogowanie → PandaCode się odpala → Snapper/`snap-pac` działają automaty
 na żywym systemie. Jedyne pozostałe ograniczenie to brak akceleracji GPU w
 tym konkretnym środowisku testowym (headless QEMU, software rendering) — nie
 dotyczy poprawności samego configu PandOS.
+
+---
+
+## Scenariusz B: instalacja z ISO (`archiso` + `cidata`, w pełni bezobsługowa) — ZATRZYMANE, przyczyna zidentyfikowana
+
+**Data:** 2026-10-22. **Cel:** zbudować instalowalne ISO (`pandos-iso/`,
+fork profilu `releng`) i przetestować w QEMU pełny, bezobsługowy scenariusz:
+boot z ISO → wykrycie dysku `cidata` → `autoinstall.sh` →
+`archinstall --config ... --silent` → post-processing (`@snapshots`,
+`grub-mkconfig`, `genfstab`) → `systemctl reboot` → oczekiwany boot
+zainstalowanego systemu z dysku.
+
+### Co faktycznie się stało
+
+Proces QEMU (`qemu-system-x86_64 ... -drive file=target-disk.img,...
+-drive file=cidata.img,... -drive file=out/pandos-....iso,media=cdrom ...`)
+działał **ok. 6h16min** (14:46–21:04) bez osiągnięcia stabilnego końcowego
+stanu. Monitorowanie przez QMP `screendump` (nie przez forka, bezpośrednio)
+pokazało powtarzający się cykl:
+
+1. Instalacja pakietów (COSMIC + reszta, 188 pakietów) kończy się, dochodzi
+   do post-transaction hooków pacmana — w jednym z przebiegów zaobserwowano
+   `(21/21) Performing snapper post snapshots...` natychmiast po czym
+   `fatal library error, lookup self` w logu hooka. **Nieistotne dla wyniku
+   końcowego** — to komunikat z pojedynczego hooka pacmana (prawdopodobnie
+   `snap-pac`/`grub-btrfsd` przy próbie `/proc/self/exe` w chroot), nie
+   przerwał transakcji ani samego `archinstall` (co potwierdza fakt, że
+   zaraz potem nastąpił reboot zgodny ze skryptem, patrz niżej) — **do
+   potwierdzenia precyzyjnie przy następnej iteracji, nie olewać całkowicie,
+   ale nie jest to przyczyna pętli opisanej niżej.**
+2. Krótko po tym: ekran TianoCore/OVMF (reboot). To pasuje dokładnie do
+   końcówki `autoinstall.sh`: `echo "Install complete. Rebooting in 10s..."`
+   → `sleep 10` → `systemctl reboot`.
+3. Zamiast wystartować zainstalowany system z `target-disk.img`, VM **wraca
+   do live ISO**: nowy proces `autoinstall.sh` (inny PID), ponowne wykrycie
+   `cidata`, ponowne `archinstall --config ... --silent` **od zera, na tym
+   samym dysku**.
+4. Krok 1–3 powtórzył się wielokrotnie w ciągu ponad 6 godzin (zaobserwowane
+   bezpośrednio: check5/6 ok. 17:53, check8/9 ok. 17:54–17:56, kolejny pełny
+   cykl od zera widoczny o 21:01 — a więc **co najmniej 3 pełne cykle
+   instalacji w jednej sesji testowej**, prawdopodobnie więcej pomiędzy
+   punktami kontrolnymi, których nie rejestrowałem w sposób ciągły).
+
+Proces zatrzymany ręcznie (`kill`) na wyraźne polecenie — **nie uznajemy
+tego za "instalacja się nie udała"**, tylko za "test się nigdy nie kończy",
+co to dwie różne rzeczy.
+
+### Przyczyna — zidentyfikowana, nie zgadywana
+
+Dwa fakty, oba zweryfikowane bezpośrednio w kodzie i w rzeczywistym poleceniu
+uruchomienia QEMU:
+
+1. **`autoinstall.sh` kończy się komentarzem wprost mówiącym o fizycznym
+   usunięciu nośnika:** `"Install complete. Rebooting in 10s (remove
+   installation media now)."` — to poprawne i oczekiwane dla instalatora na
+   prawdziwym sprzęcie (USB/DVD, operator wyjmuje nośnik), ale **nic w
+   testowej automatyzacji QEMU nie robi tego odpowiednika** (nie ma
+   odłączenia/wysunięcia CD-ROM przed rebootem).
+2. **Polecenie uruchamiające QEMU nie ma żadnego wymuszonego porządku
+   bootowania** — zweryfikowane bezpośrednio w `ps aux`: brak flagi
+   `-boot order=...` i brak `bootindex=` na którymkolwiek `-drive`. Firmware
+   (OVMF) wybiera więc urządzenie rozruchowe wg własnej domyślnej logiki, a
+   `grub-install --target=x86_64-efi --efi-directory=/boot
+   --bootloader-id=PANDOS --removable` (w `provision.sh`/`autoinstall.sh`)
+   zapisuje bootloader pod **fallbackową** ścieżką EFI
+   (`/EFI/BOOT/BOOTX64.EFI`) — dokładnie tę samą konwencjonalną ścieżkę,
+   pod którą archiso publikuje własny rozruch na ISO. Gdy oba urządzenia
+   (dysk i CD-ROM) mają bootowalny plik pod tą samą fallbackową ścieżką, a
+   nic nie wymusza priorytetu, OVMF w tym środowisku konsekwentnie wybiera
+   CD-ROM.
+
+**To jest problem samego testowego środowiska QEMU, nie błąd logiki
+instalacji PandOS** — na prawdziwym sprzęcie z fizycznie wyjętym nośnikiem
+ten scenariusz by nie wystąpił. Ale do przetestowania scenariusza B w QEMU
+trzeba to jawnie obejść.
+
+### Rekomendowana poprawka (do wdrożenia w następnej iteracji, NIEWDROŻONA w tym teście)
+
+Dwie niezależne, uzupełniające się opcje — zalecane wdrożenie obu:
+
+1. **W poleceniu QEMU:** dodać `bootindex=1` do `-drive
+   file=target-disk.img,...` i wyższy numer (np. `bootindex=2`) do
+   `-drive file=...iso,media=cdrom` — to standardowy, udokumentowany sposób
+   QEMU na wymuszenie priorytetu dysku nad CD-ROM niezależnie od tego, co
+   zawiera NVRAM/fallback EFI obu urządzeń.
+2. **Opcjonalnie, dodatkowe zabezpieczenie:** po potwierdzonym
+   `POST_PROCESSING_OK` (przed `systemctl reboot`), odłączyć CD-ROM
+   programowo przez QMP z zewnątrz (`blockdev-change-medium` / `eject`) —
+   odpowiednik "wyjęcia nośnika" z komentarza w skrypcie, ale sterowany
+   przez harness testowy, nie przez `autoinstall.sh` (który nie ma dostępu
+   do QMP swojego własnego hosta).
+
+### Co NIE jest w tym momencie potwierdzone (świadomie, do zrobienia w następnej iteracji)
+
+- Czy po poprawce `bootindex` zainstalowany system faktycznie bootuje do
+  końca (COSMIC, SSH jako `pandos`, Snapper) **z ISO/`cidata`** — ten
+  konkretny test (scenariusz B w całości) nie został jeszcze domknięty.
+- Dokładna przyczyna `fatal library error, lookup self` w hooku snapper —
+  nieistotna dla pętli opisanej wyżej, ale warta osobnego sprawdzenia przy
+  następnym przebiegu (np. `journalctl` w zainstalowanym systemie po
+  pierwszym udanym boocie).
+- Dokładna liczba pełnych cykli reinstalacji w tej 6-godzinnej sesji —
+  zaobserwowano **co najmniej 3** bezpośrednio przez zrzuty QMP, realna
+  liczba może być wyższa (zrzuty robione punktowo, nie w sposób ciągły).

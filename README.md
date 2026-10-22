@@ -163,9 +163,21 @@ dla prostoty, patrz `tests/`).
 **Otwarte, nierozstrzygnięte:** który przeglądarkę preinstalować (nic jeszcze
 nie wybrano — do decyzji, nie zgadywania).
 
+## Otwarte decyzje
+
+### Warstwa transakcyjna — odłożona (2026-10-22)
+
+Zaprojektowana koncepcja (`pandos-config/docs/transactional-layer.md`):
+CLI `pandos-tx`, potwierdzanie transakcji pacmana przez realny boot (nie
+czas), automatyczny rollback bez pytania człowieka. **Decyzja: nie priorytet
+przed MVP.** Mamy już działający, zweryfikowany ręczny rollback przez
+`btrfs-assistant --restore` — to wystarcza na razie. Dokument zostaje w repo
+jako punkt wyjścia, gdyby ta potrzeba kiedyś wróciła, ale nic z niego nie jest
+teraz implementowane.
+
 ## Struktura repo
 
-Szkielet katalogów (`pandos-config/` dla `archinstall`, `pandos-iso/` dla
-`archiso`) celowo jeszcze nie istnieje — stawiamy go po dopracowaniu treści
-(lista pakietów, provisioning, rozstrzygnięty mechanizm rollbacku), żeby nie
-budować struktury pod rozwiązanie, które się jeszcze zmieni.
+`pandos-config/` (`archinstall`: `user_configuration.json`, `provision.sh`,
+`run-fast-loop.sh`, `docs/`) już istnieje i działa — szybka pętla
+zweryfikowana w `tests/full-config-verification.md`. `pandos-iso/` (`archiso`)
+jeszcze nie — czeka na potwierdzenie bootu w QEMU (wolna pętla, w toku).

@@ -1,237 +1,252 @@
 # PandOS
 
 <p align="center">
-  <img src="assets/pandos-mascot.png" width="420" alt="Maskotka PandOS — panda z łapami pingwina">
+  <img src="assets/pandos-mascot.png" width="420" alt="PandOS mascot — a panda with penguin feet">
 </p>
 
-Instalowalny Linux dla osób, które traktują agentów AI jako główny sposób
-pracy z komputerem. [PandaCode](https://github.com/aicodeking/pandacode) jest
-głównym punktem wejścia, a nie tylko kolejną aplikacją obok terminala czy
-menedżera plików.
+An installable Linux for people who treat AI agents as their primary way of
+working with a computer. [PandaCode](https://github.com/aicodeking/pandacode)
+is the main entry point, not just another app next to the terminal or file
+manager.
 
-PandOS powstaje przede wszystkim jako codzienne środowisko pracy autora i jest
-kierowany do ludzi pracujących w podobny sposób. Obraz pozostaje czysty — bez
-wbudowanych kluczy API; dostawcę i używane agenty konfiguruje się samodzielnie
-po instalacji.
+PandOS is being built first and foremost as the author's own daily driver,
+and is aimed at people who work the same way. The image stays clean — no
+baked-in API keys; the provider and agents you use are configured yourself
+after installation.
 
 ## Status
 
-**MVP bootuje end-to-end (2026-10-22), zweryfikowane w QEMU, nie tylko w
-teorii:** `archinstall` (config w `pandos-config/`) w jednym przebiegu
-instaluje dysk+pakiety+COSMIC+PandaCode+Snapper → system bootuje do
-graficznego greetera COSMIC → logowanie działa → pełny pulpit COSMIC się
-odpala → PandaCode startuje pod XWayland → Snapper i `snap-pac` automatycznie
-tworzą snapshoty na żywym systemie. Szczegóły i dokładne komendy w
-[`tests/full-config-verification.md`](tests/full-config-verification.md) i
+**MVP boots end-to-end (2026-10-22), verified in QEMU, not just in theory:**
+`archinstall` (config in `pandos-config/`) installs disk+packages+COSMIC+
+PandaCode+Snapper in a single pass → the system boots to the graphical
+COSMIC greeter → login works → the full COSMIC desktop comes up → PandaCode
+starts under XWayland → Snapper and `snap-pac` automatically create
+snapshots on the live system. Details and exact commands in
+[`tests/full-config-verification.md`](tests/full-config-verification.md) and
 [`tests/qemu-boot-verification.md`](tests/qemu-boot-verification.md).
 
-**Instalowalne ISO zweryfikowane end-to-end (2026-10-22):** `pandos-iso/`
-(fork profilu `releng` archiso) buduje się, bootuje w QEMU, wykrywa dysk
-`cidata` i odpala `archinstall` w pełni bezobsługowo — system instaluje się i
-bootuje do działającego COSMIC za pierwszym razem, bez ręcznej ingerencji.
-PandOS przestaje być configiem testowanym tylko w szybkiej pętli i staje się
-realnym, instalowalnym systemem. Szczegóły, w tym napotkana i naprawiona
-pułapka z kolejnością bootowania w QEMU, w
+**Installable ISO verified end-to-end (2026-10-22):** `pandos-iso/` (a fork
+of archiso's `releng` profile) builds, boots in QEMU, detects a `cidata`
+drive, and runs `archinstall` fully unattended — the system installs itself
+and boots to a working COSMIC desktop on the first try, with no manual
+intervention. PandOS stops being a config tested only in the fast loop and
+becomes a real, installable system. Details, including a boot-order pitfall
+in QEMU that was hit and fixed, are in
 [`tests/qemu-boot-verification.md`](tests/qemu-boot-verification.md)
-(sekcja „Scenariusz B").
+("Scenario B" section).
 
-Ten plik rośnie wraz z projektem i jest źródłem prawdy o decyzjach — każda
-ważna decyzja architektoniczna i jej weryfikacja (albo obalenie) trafia tu,
-z datą i źródłem.
+This file grows with the project and is the source of truth for decisions —
+every significant architectural decision and its verification (or
+rejection) lands here, with a date and a source.
 
-## Zasady projektowe
+## Project principles
 
-1. **PandaCode jako punkt wejścia**, nie jedna z wielu aplikacji.
-2. **Czysty system, bez kluczy** — żadnych tokenów/API keys w obrazie ISO.
-3. **Prosty domyślnie, otwarty w środku** — spójne doświadczenie agent-first,
-   bez ukrywania systemu i bez blokowania trybu zaawansowanego.
+1. **PandaCode as the entry point**, not one app among many.
+2. **Clean system, no keys** — no tokens/API keys baked into the ISO image.
+3. **Simple by default, open underneath** — a coherent agent-first
+   experience, without hiding the system or blocking power-user mode.
 
-## Decyzje architektoniczne
+## Architecture decisions
 
-### Nie forkujemy Omarchy (2026-10-22)
+### Not forking Omarchy (2026-10-22)
 
-Pierwotny plan zakładał fork `omarchy`/`omarchy-iso` z podmianą Hyprland→COSMIC.
-Zweryfikowane bezpośrednio w repozytoriach (`omacom/omarchy`, `omacom/omarchy-iso`,
-`omacom/omarchy-pkgs`) pokazało, że Hyprland jest wpleciony w co najmniej trzy
-repozytoria naraz, build wymaga Dockera `--privileged`, bootloader to Limine
-(nie GRUB). Koszt przepisania tego na COSMIC przewyższa korzyść z dziedziczenia
-gotowego instalatora.
+The original plan assumed forking `omarchy`/`omarchy-iso` and swapping
+Hyprland for COSMIC. Verified directly against the repos
+(`omacom/omarchy`, `omacom/omarchy-iso`, `omacom/omarchy-pkgs`): Hyprland is
+woven into at least three repos at once, the build requires Docker
+`--privileged`, and the bootloader is Limine (not GRUB). The cost of
+rewriting all of that for COSMIC outweighs the benefit of inheriting a
+ready-made installer.
 
-**Decyzja:** czysty Arch Linux + `archinstall` + COSMIC + preinstalowany
-PandaCode, budowane od zera.
+**Decision:** a clean Arch Linux + `archinstall` + COSMIC + preinstalled
+PandaCode, built from scratch.
 
-### COSMIC bez AUR (potwierdzone 2026-10-22)
+### COSMIC without AUR (confirmed 2026-10-22)
 
-`cosmic-session` i `cosmic-greeter` to oficjalne pakiety w repo `extra`
-(grupa `cosmic`), nie AUR. Sprawdzone bezpośrednio w bazie pakietów Arch.
+`cosmic-session` and `cosmic-greeter` are official packages in the `extra`
+repo (`cosmic` group), not AUR. Checked directly against the Arch package
+database.
 
-### Pipeline budowy: archinstall + archiso, nie wybór między nimi
+### Build pipeline: archinstall + archiso, not a choice between them
 
-Dwie pętle o różnej prędkości, nie jeden mechanizm:
+Two loops at different speeds, not one single mechanism:
 
-- **Szybka pętla ("szkic architektury"):** `archinstall` + config JSON + skrypt
-  Pythona (provisioning: COSMIC, Snapper, snap-pac, PandaCode AppImage; mirror
-  tylko `core`/`extra`, bez `testing`/AUR) odpalany przeciw plikowi-obrazowi
-  dysku przez `losetup` — bez bootowania ISO/VM. `archinstall` wymaga
-  `arch-chroot`/`genfstab`, więc biegnie w kontenerze Arch
-  (`ghcr.io/archlinux/archlinux:latest`, `--privileged`), bo maszyna
-  deweloperska nie jest Archem. Loop device nie działa wewnątrz kontenera —
-  `losetup` robimy na hoście, do kontenera przekazujemy gotowy `/dev/loopX`.
-- **Wolna pętla ("wydruk do ISO"):** fork profilu `releng` z `archiso`
-  (ma już `archinstall` w swoim `packages.x86_64` — sprawdzone w źródle na
-  gitlab.archlinux.org/archlinux/archiso) + systemd unit szukający dysku
-  `cidata` (wzorzec NoCloud/cloud-init, wsparty natywnie przez
-  Proxmox/Packer/libvirt) + `mkarchiso`. Odpalana rzadziej, tylko do
-  weryfikacji finalnego produktu.
+- **Fast loop ("sketch the architecture"):** `archinstall` + a JSON config +
+  a Python provisioning script (COSMIC, Snapper, snap-pac, the PandaCode
+  AppImage; mirror restricted to `core`/`extra`, no `testing`/AUR) run
+  against a raw disk image file via `losetup` — no ISO/VM boot involved.
+  `archinstall` needs `arch-chroot`/`genfstab`, so it runs inside an Arch
+  container (`ghcr.io/archlinux/archlinux:latest`, `--privileged`), since
+  the dev machine isn't Arch itself. The loop device doesn't work inside
+  the container — `losetup` is done on the host, and the ready `/dev/loopX`
+  is passed into the container.
+- **Slow loop ("print to an ISO"):** a fork of archiso's `releng` profile
+  (which already ships `archinstall` in its `packages.x86_64` — checked
+  directly in the source at gitlab.archlinux.org/archlinux/archiso) + a
+  systemd unit that looks for a `cidata` drive (the NoCloud/cloud-init
+  convention, natively supported by Proxmox/Packer/libvirt) + `mkarchiso`.
+  Run less often, only to verify the final product.
 
-Python do provisioningu, nie Rust — `archinstall` ma natywne API Pythona
-(`Installer`/`Profile`/`Application`), środowisko live i tak wymaga Pythona.
-Argumenty za Rustem (spójność z PandaCode, bezpieczeństwo pamięci) nie mają
-zastosowania do jednorazowego skryptu instalacyjnego.
+Python for provisioning, not Rust — `archinstall` has a native Python API
+(`Installer`/`Profile`/`Application`), and the live environment requires
+Python anyway. The arguments for Rust (consistency with PandaCode, memory
+safety) don't apply to a one-shot install script.
 
-**Korekta szybkiej pętli (2026-10-22, z testu w `tests/` + wkładem DeepSeeka,
-potwierdzona w źródle):** `archinstall` w gołym kontenerze `--privileged` nie
-da się odpalić end-to-end — woła `localectl`/`systemctl` przez D-Bus, co wymaga
-żywego systemd jako PID 1. Nie inwestujemy w `systemd-nspawn` na tym etapie.
-Rozwiązanie: w configu JSON pomijamy `locale_config` i `bootloader_config` —
-sprawdzone w źródle (`archinstall/lib/installer.py:964-966`,
-`archinstall/scripts/guided.py:117`), że oba kroki są warunkowe (`if
-locale_config:` / `if config.bootloader_config:`) i po prostu się nie wykonują,
-gdy pola są nieobecne. Zamiast nich — `custom_commands` (pole configu,
-wykonywane na końcu instalacji przez `arch-chroot`, `guided.py:181`): locale,
-hostname, user, `bootctl`/`grub-install`, `systemctl enable`. `systemctl
-enable` działa bez żywego systemd (tylko symlinki plików jednostek) —
-w przeciwieństwie do `localectl`, który faktycznie pyta demona.
+**Fast-loop correction (2026-10-22, from the test in `tests/` + input from
+DeepSeek, confirmed in source):** `archinstall` can't run end-to-end in a
+bare `--privileged` container — it calls `localectl`/`systemctl` over D-Bus,
+which needs a live systemd as PID 1. We're not investing in
+`systemd-nspawn` at this stage. Fix: the JSON config omits `locale_config`
+and `bootloader_config` — confirmed in source
+(`archinstall/lib/installer.py:964-966`,
+`archinstall/scripts/guided.py:117`) that both steps are conditional (`if
+locale_config:` / `if config.bootloader_config:`) and simply don't run when
+those fields are absent. In their place — `custom_commands` (a config
+field, run at the very end of the install via `arch-chroot`,
+`guided.py:181`): locale, hostname, user, `bootctl`/`grub-install`,
+`systemctl enable`. `systemctl enable` works without a live systemd (it's
+just unit-file symlinks) — unlike `localectl`, which actually queries the
+daemon.
 
-### Układ subwolumenów Btrfs (potwierdzone z wiki.archlinux.org/title/Snapper + źródła archinstall, 2026-10-22)
+### Btrfs subvolume layout (confirmed from wiki.archlinux.org/title/Snapper + archinstall source, 2026-10-22)
 
-Wiki sugeruje `@`→`/`, `@home`→`/home`, `@snapshots`→`/.snapshots`,
-`@var_log`→`/var/log`, żeby chronić `/home` przed rollbackiem `/`. Pułapka:
-wersje `archinstall` starsze niż 3.0.5 montują `@.snapshots` w sposób psujący
-`snapper create-config` (GitHub issue #1808, zlinkowany wprost na wiki) —
-używać 3.0.5+.
+The wiki suggests `@`→`/`, `@home`→`/home`, `@snapshots`→`/.snapshots`,
+`@var_log`→`/var/log`, to protect `/home` from a `/` rollback. Pitfall:
+`archinstall` versions older than 3.0.5 mount `@.snapshots` in a way that
+breaks `snapper create-config` (GitHub issue #1808, linked directly from the
+wiki) — use 3.0.5+.
 
-**Ważne:** domyślny layout samego `archinstall` (funkcja
-`get_default_btrfs_subvols()` w `archinstall/lib/disk/default_layouts.py`,
-sprawdzone w źródle na branchu `master`) to `@`→`/`, `@home`→`/home`,
-`@log`→`/var/log`, `@pkg`→`/var/cache/pacman/pkg` — **bez** `@snapshots`.
-Trzeba go jawnie nadpisać w configu JSON (pole `btrfs` na partycji roota, lista
-obiektów `{"name": ..., "mountpoint": ...}`, dataclass `SubvolumeModification`
-w `archinstall/lib/models/device.py`), dodając `@snapshots`→`/.snapshots` do
-listy domyślnej. Finalna lista do użycia: `@`, `@home`, `@log`, `@pkg`,
-`@snapshots`.
+**Important:** `archinstall`'s own default layout (the
+`get_default_btrfs_subvols()` function in
+`archinstall/lib/disk/default_layouts.py`, checked in source on the
+`master` branch) is `@`→`/`, `@home`→`/home`, `@log`→`/var/log`,
+`@pkg`→`/var/cache/pacman/pkg` — **without** `@snapshots`. It has to be
+explicitly overridden in the JSON config (the `btrfs` field on the root
+partition, a list of `{"name": ..., "mountpoint": ...}` objects, the
+`SubvolumeModification` dataclass in `archinstall/lib/models/device.py`),
+adding `@snapshots`→`/.snapshots` to the default list. Final list in use:
+`@`, `@home`, `@log`, `@pkg`, `@snapshots`.
 
-### Mechanizm rollbacku — POTWIERDZONE empirycznie (2026-10-22)
+### Rollback mechanism — EMPIRICALLY CONFIRMED (2026-10-22)
 
-Zweryfikowane w realnej VM (archinstall → arch-chroot → QEMU/UEFI → SSH),
-dwukrotnie: raz ręczną podmianą subwolumenu, raz prawdziwym narzędziem.
-Pełny log i procedura w [`tests/btrfs-rollback-verification.md`](tests/btrfs-rollback-verification.md).
+Verified on a real VM (archinstall → arch-chroot → QEMU/UEFI → SSH), twice:
+once with a manual subvolume swap, once with a real tool. Full log and
+procedure in
+[`tests/btrfs-rollback-verification.md`](tests/btrfs-rollback-verification.md).
 
-**Odrzucona hipoteza:** `btrfs subvolume set-default` — nietestowalna z
-definicji, bo `grub-mkconfig` wpisuje `rootflags=subvol=@` na twardo w linię
-jądra, więc zmiana "domyślnego subwolumenu" btrfs nic by nie zmieniła w tym,
-co się bootuje.
+**Rejected hypothesis:** `btrfs subvolume set-default` — untestable by
+definition, because `grub-mkconfig` hardcodes `rootflags=subvol=@` into the
+kernel line, so changing btrfs's "default subvolume" wouldn't change
+anything about what actually boots.
 
-**Działający mechanizm:** rename-swap na poziomie top-level btrfs
-(`subvolid=5`) — bieżący `@` zmienia nazwę na backup, nowy zapisywalny `@`
-powstaje jako snapshot wybranego punktu przywracania. Działa **w pełni z
-działającego, zabootowanego systemu, bez Live USB** (sesja SSH przetrwała
-całą operację). Po reboot: root przywrócony, `/home` nienaruszone.
+**Working mechanism:** a top-level btrfs rename-swap (`subvolid=5`) — the
+current `@` is renamed to a backup, and a new writable `@` is created as a
+snapshot of the chosen restore point. Works **fully from a running, booted
+system, with no Live USB needed** (the SSH session survived the entire
+operation). After reboot: root restored, `/home` untouched.
 
-[Btrfs Assistant](https://gitlab.com/btrfs-assistant/btrfs-assistant)
-(pakiet `btrfs-assistant`, `extra`, nie AUR) ma gotowy, headless tryb CLI
-(`btrfs-assistant --list` / `--restore <indeks>`, działa z
-`QT_QPA_PLATFORM=offscreen`, bez GUI) — **potwierdzone, że robi dosłownie
-ten sam rename-swap**, nie trzeba reimplementować mechanizmu samemu. To
-jest kandydat do wywołania bezpośrednio z UI/wrappera PandOS.
+[Btrfs Assistant](https://gitlab.com/btrfs-assistant/btrfs-assistant) (the
+`btrfs-assistant` package, `extra`, not AUR) has a ready-made headless CLI
+mode (`btrfs-assistant --list` / `--restore <index>`, works with
+`QT_QPA_PLATFORM=offscreen`, no GUI) — **confirmed to do literally the same
+rename-swap**, no need to reimplement the mechanism ourselves. This is a
+candidate to be called directly from a PandOS UI/wrapper.
 
-**Otwarte na później:** sprzątanie starych `@_backup_*` po rollbacku
-(nieautomatyczne), zachowanie GUI (nie tylko CLI) narzędzia — niesprawdzone,
-brak środowiska graficznego w teście.
+**Open for later:** cleanup of old `@_backup_*` subvolumes after a rollback
+(not automatic), and the GUI (not just CLI) tool's behavior — unverified, no
+graphical environment in the test.
 
-### Lista pakietów — draft (2026-10-22)
+### Package list — draft (2026-10-22)
 
-**COSMIC:** instalacja `cosmic-session` (grupa `cosmic`) wystarcza — sprawdzone
-bezpośrednio w jego liście `depends` w bazie pakietów Arch, pociąga za sobą
-m.in. `cosmic-greeter` (własny greeter, **GDM niepotrzebny**, mimo że starsze
-poradniki z 2024 go zalecały) i `xorg-xwayland` (**potrzebne przez PandaCode**,
-patrz niżej — to jest automatyczne, nic dodatkowego do zrobienia). Warto dodać
-jawnie opcjonalne: `cosmic-terminal`, `cosmic-store`, `cosmic-text-editor`,
-`gnome-keyring` (do przechowywania kluczy dostawców AI zgodnie z zasadą
-projektową #2 — PandaCode sam nie trzyma kluczy, ale CLI agentów, które
-odpala, mogą chcieć systemowego keyringu).
+**COSMIC:** installing `cosmic-session` (the `cosmic` group) is enough —
+confirmed directly in its `depends` list in the Arch package database; it
+pulls in `cosmic-greeter` (its own greeter, **GDM not needed**, even though
+older 2024 guides recommended it) and `xorg-xwayland` (**needed by
+PandaCode**, see below — this is automatic, nothing extra to do). Worth
+adding explicitly as optional: `cosmic-terminal`, `cosmic-store`,
+`cosmic-text-editor`, `gnome-keyring` (for storing AI provider keys per
+project principle #2 — PandaCode itself doesn't hold keys, but the agent
+CLIs it launches may want a system keyring).
 
-**PandaCode — wymagania potwierdzone z jego własnego README (2026-10-22):**
-wymaga `fuse2` (pakiet `fuse2`, oficjalne repo `extra`, nie AUR) do odpalenia
-AppImage bez `APPIMAGE_EXTRACT_AND_RUN=1`; wymaga X11 lub XWayland (patrz
-COSMIC wyżej — już pokryte); wymaga zainstalowanego osobno `git` + co najmniej
-jednego CLI agenta (Claude Code / Codex / itd.) — **PandaCode świadomie nic z
-tego nie zawiera**, użytkownik instaluje i loguje się sam. To jest zgodne z
-zasadą projektową #2, nie coś do obejścia. Instalacja samego PandaCode: AppImage
-z `github.com/aicodeking/pandacode/releases/latest/download/PandaCode-Linux-x86_64.AppImage`
-do np. `/opt/pandacode/`, `chmod +x`, wpis `.desktop` + ewentualny autostart.
+**PandaCode — requirements confirmed from its own README (2026-10-22):**
+needs `fuse2` (the `fuse2` package, official `extra` repo, not AUR) to run
+the AppImage without `APPIMAGE_EXTRACT_AND_RUN=1`; needs X11 or XWayland
+(see COSMIC above — already covered); needs `git` plus at least one agent
+CLI (Claude Code / Codex / etc.) installed separately — **PandaCode
+deliberately ships none of that**, the user installs and logs in
+themselves. This is consistent with project principle #2, not something to
+work around. Installing PandaCode itself: the AppImage from
+`github.com/aicodeking/pandacode/releases/latest/download/PandaCode-Linux-x86_64.AppImage`
+into e.g. `/opt/pandacode/`, `chmod +x`, a `.desktop` entry plus optional
+autostart.
 
-**Warstwa bezpieczeństwa:** `btrfs-progs`, `snapper`, `snap-pac`,
-`btrfs-assistant` (wszystkie w `extra`, zero AUR).
+**Safety layer:** `btrfs-progs`, `snapper`, `snap-pac`, `btrfs-assistant`
+(all in `extra`, zero AUR).
 
-**Baza:** `base`, `linux`, `networkmanager`, `git`, `sudo`, bootloader (do
-ostatecznego rozstrzygnięcia dla produktu finalnego — testowy VM używa `grub`
-dla prostoty, patrz `tests/`).
+**Base:** `base`, `linux`, `networkmanager`, `git`, `sudo`, bootloader (to
+be finalized for the final product — the test VM uses `grub` for
+simplicity, see `tests/`).
 
-**Otwarte, nierozstrzygnięte:** który przeglądarkę preinstalować (nic jeszcze
-nie wybrano — do decyzji, nie zgadywania).
+**Open, undecided:** which browser to preinstall (nothing chosen yet — to
+be decided, not guessed).
 
-## Otwarte decyzje
+## Open decisions
 
-### Warstwa transakcyjna — odłożona (2026-10-22)
+### Transactional layer — deferred (2026-10-22)
 
-Zaprojektowana koncepcja (`pandos-config/docs/transactional-layer.md`):
-CLI `pandos-tx`, potwierdzanie transakcji pacmana przez realny boot (nie
-czas), automatyczny rollback bez pytania człowieka. **Decyzja: nie priorytet
-przed MVP.** Mamy już działający, zweryfikowany ręczny rollback przez
-`btrfs-assistant --restore` — to wystarcza na razie. Dokument zostaje w repo
-jako punkt wyjścia, gdyby ta potrzeba kiedyś wróciła, ale nic z niego nie jest
-teraz implementowane.
+A designed concept (`pandos-config/docs/transactional-layer.md`): a
+`pandos-tx` CLI, confirming pacman transactions via a real boot (not time),
+automatic rollback without asking the human. **Decision: not a priority
+before MVP.** We already have a working, verified manual rollback via
+`btrfs-assistant --restore` — that's enough for now. The document stays in
+the repo as a starting point in case this need comes back later, but none
+of it is being implemented right now.
 
-### Rozproszenie / lokalne modele — NIE odłożona jako dokument, tylko odrzucona na teraz (2026-10-22)
+### Distributed agents / local models — NOT deferred as a document, just declined for now (2026-10-22)
 
-W odróżnieniu od warstwy transakcyjnej, ten pomysł (agenci rozproszeni,
-lokalne modele przez Ollama, uprawnienia `pandos-tx` dla agentów) **nie ma
-jeszcze design docu w repo** — padła wprost decyzja „nie teraz, wracamy
-czysto do ISO" i temat nie został nawet spisany. Jeśli ma wrócić, najpierw
-potrzebuje własnego dokumentu (analogicznego do
-`pandos-config/docs/transactional-layer.md`), nie od razu implementacji.
+Unlike the transactional layer, this idea (distributed agents, local models
+via Ollama, `pandos-tx` permissions for agents) **has no design doc in the
+repo yet** — the explicit decision was "not now, back to ISO" and the topic
+was never even written down. If it comes back, it first needs its own
+document (like `pandos-config/docs/transactional-layer.md`), not
+implementation straight away.
 
-## Co dalej (po MVP ISO)
+## What's next (post-MVP)
 
-Krótka lista priorytetów po domknięciu instalowalnego ISO (2026-10-22), żeby
-nic nie trzeba było sobie przypominać za tydzień. Żaden z tych punktów nie
-jest w toku — to jest spisanie stanu, nie nowa praca:
+A short list of priorities after closing out the installable ISO
+(2026-10-22), so nothing needs to be reconstructed from memory a week from
+now. None of these items are in progress — this is a record of state, not
+new work:
 
-| # | Temat | Status |
+| # | Topic | Status |
 |---|-------|--------|
-| 1 | Bridge sieciowy zamiast `user`/NAT w testach QEMU | Do rozważenia — przyspieszyłoby kolejne iteracje testów ISO, niewdrożone, niezapisane gdzie indziej niż tu |
-| 2 | `fatal library error, lookup self` w hooku pacmana | Nieblokujące, do zbadania kiedyś (patrz `tests/qemu-boot-verification.md`) |
-| 3 | Warstwa transakcyjna (`pandos-tx`) | Design doc gotowy (`pandos-config/docs/transactional-layer.md`), implementacja odłożona do decyzji o priorytecie |
-| 4 | Rozproszenie / lokalne modele | **Brak jeszcze design docu** — odrzucone na teraz, nie spisane; priorytet dopiero po MVP ISO, jeśli w ogóle |
-| 5 | ISO do dystrybucji dla innych (nie tylko do własnego użytku) | Otwarte pytanie, nie podjęta decyzja — do przemyślenia, jeśli PandOS ma wyjść poza użytek autora |
+| 1 | Bridge networking instead of `user`/NAT in QEMU tests | Worth considering — would speed up further ISO test iterations, not implemented, not recorded anywhere else |
+| 2 | `fatal library error, lookup self` in a pacman hook | Non-blocking, to be investigated eventually (see `tests/qemu-boot-verification.md`) |
+| 3 | Transactional layer (`pandos-tx`) | Design doc ready (`pandos-config/docs/transactional-layer.md`), implementation deferred pending a priority decision |
+| 4 | Distributed agents / local models | **No design doc yet** — declined for now, not written down; priority only after MVP ISO, if at all |
+| 5 | Distributing the ISO to others (not just personal use) | Open question, no decision made — to be thought through if PandOS is meant to go beyond the author's own use |
 
-Kontekst do punktu 4 (żeby nie był zagadką za miesiąc, bez pisania design
-docu): temat padł w briefie z 2026-10-22 — dwa poziomy, oba odłożone: (1)
-zdalna inferencja — agent/kod zostają na PandOS, zapytania do modelu idą na
-drugi komputer przez API zgodne z OpenAI (Ollama); (2) zdalne wykonywanie
-pracy — agent na drugiej maszynie dostaje worktree i wykonuje komendy, co
-wymaga kolejki/blokad/uprawnień. Argument nie jest po prostu „lokalne
-zamiast chmury" — to małe modele do wąskich zadań (formatowanie,
-klasyfikacja, boilerplate) z automatyczną eskalacją do większego
-modelu/chmury, gdy lokalny wynik nie przechodzi testów, mierzone realnymi
-oszczędnościami (odsetek zadań lokalnych, liczba eskalacji, czas). Priorytet
-dopiero po MVP ISO i po realnych pomiarach, nie z góry.
+Context for item 4 (so it isn't a mystery a month from now, without writing
+a design doc): the topic came up in a planning discussion on 2026-10-22
+(pasted into this project's Claude Code chat as a Codex-authored brief — no
+separate file exists; the full text can be found by searching that
+session's transcript for "rozproszenie i lokalne modele" if it's ever
+needed verbatim). Two levels, both deferred: (1) remote inference — the
+agent/code stay on PandOS, model requests go to a second machine over an
+OpenAI-compatible API (Ollama); (2) remote work execution — an agent on the
+second machine gets a worktree and runs commands, which needs a
+queue/locking/permissions model. The argument isn't simply "local instead
+of cloud" — it's small models for narrow tasks (formatting, classification,
+boilerplate) with automatic escalation to a larger model/cloud when the
+local result fails tests, judged on measured savings (share of local tasks,
+number of escalations, time). Priority only after MVP ISO and after real
+measurements, not assumed upfront.
 
-## Struktura repo
+## Repo structure
 
 `pandos-config/` (`archinstall`: `user_configuration.json`, `provision.sh`,
-`run-fast-loop.sh`, `docs/`) i `pandos-iso/` (`archiso`: `configs/pandos/`,
-`test-qemu-boot.sh`) już istnieją i działają — szybka pętla, wolna pętla i
-instalacja z ISO wszystkie trzy zweryfikowane
-(`tests/full-config-verification.md`, `tests/qemu-boot-verification.md`).
+`run-fast-loop.sh`, `docs/`) and `pandos-iso/` (`archiso`:
+`configs/pandos/`, `test-qemu-boot.sh`) both already exist and work — the
+fast loop, the slow loop, and installing from the ISO are all three
+verified (`tests/full-config-verification.md`,
+`tests/qemu-boot-verification.md`).

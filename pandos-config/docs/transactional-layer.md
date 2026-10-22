@@ -1,67 +1,70 @@
-# Warstwa transakcyjna — design doc
+# Transactional layer — design doc
 
-**Status: do rozważenia później, NIE priorytet przed MVP (boot→ISO).**
-Zdecydowane 2026-10-22: to jest ciekawa koncepcja, ale nie weryfikowana
-potrzeba — mamy już działający, zweryfikowany ręczny rollback przez
-`btrfs-assistant --restore` (CLI, potwierdzone empirycznie w
-`tests/btrfs-rollback-verification.md`). Ten dokument zostaje w repo jako
-punkt wyjścia, gdyby ta potrzeba kiedyś się pojawiła, ale nie jest teraz
-implementowany. Priorytetem jest boot w QEMU, potem ISO.
+**Status: to be reconsidered later, NOT a priority before MVP (boot→ISO).**
+Decided 2026-10-22: this is an interesting concept, but not a verified
+need — we already have a working, empirically verified manual rollback via
+`btrfs-assistant --restore` (CLI, confirmed in
+`tests/btrfs-rollback-verification.md`). This document stays in the repo as
+a starting point in case the need ever comes up, but it is not being
+implemented right now. The priority is booting in QEMU, then the ISO.
 
-## Koncepcja
+## Concept
 
-Cel: agent (CLI) może sam wycofać nieudaną zmianę pacmana bez pytania
-człowieka, z gwarancją potwierdzoną przez realny boot, nie przez upływ czasu.
+Goal: an agent (CLI) can roll back a failed pacman change on its own
+without asking the human, with a guarantee confirmed by a real boot, not by
+elapsed time.
 
-**Zasada:** transakcja jest potwierdzana przez boot (`boot-complete.target`),
-nie przez czas. Tylko zakończone transakcje pacman (`-S`, `-Syu`, `-R`);
-przerwane są poza gwarancją (failed-open, wymagają ręcznej decyzji).
+**Principle:** a transaction is confirmed by booting
+(`boot-complete.target`), not by time. Only completed pacman transactions
+(`-S`, `-Syu`, `-R`); interrupted ones are outside the guarantee
+(fail-open, requiring a manual decision).
 
-**Stany:** `pending` → `confirmed` (szczęśliwa ścieżka, 1 reboot) albo
-`pending` → `rolled-back` (wymaga drugiego rebootu; agent nie raportuje
-sukcesu przed nim).
+**States:** `pending` → `confirmed` (happy path, 1 reboot) or `pending` →
+`rolled-back` (requires a second reboot; the agent doesn't report success
+before it).
 
-**Trwałość:** osobny subwolumen `@pandos` → `/pandos` na tx-recordy, licznik
-prób, logi. Fail-closed: brak `@pandos` → `pandos-tx install` odmawia przed
-jakąkolwiek zmianą.
+**Persistence:** a separate `@pandos` → `/pandos` subvolume for tx-records,
+attempt counters, logs. Fail-closed: no `@pandos` → `pandos-tx install`
+refuses before making any change.
 
-**Hooki pacman:** `pandos-tx-pre` (snapshot + tx-record), `pandos-tx-post`
-(pending + `snapshot_id` odczytany, nie zgadywany), `pandos-tx-confirm`
-(przez `pandos-boot-confirm.service`).
+**Pacman hooks:** `pandos-tx-pre` (snapshot + tx-record), `pandos-tx-post`
+(pending + `snapshot_id` read, not guessed), `pandos-tx-confirm` (via
+`pandos-boot-confirm.service`).
 
-**Kontrakt CLI (v1, bez daemona):** `pandos-tx install/upgrade/status/
-rollback/confirm/history`, odpowiedź JSON ze stanem i `action_hint`.
+**CLI contract (v1, no daemon):** `pandos-tx install/upgrade/status/
+rollback/confirm/history`, a JSON response with state and `action_hint`.
 
-**Opcja A (rekomendowana dla v1):** drugi wpis rozruchowy "PandOS Recovery"
-wskazujący na snapshot; `/etc/grub.d/40_pandos` generuje wpis z ostatniego
-tx-recordu.
+**Option A (recommended for v1):** a second boot entry, "PandOS Recovery",
+pointing at the snapshot; `/etc/grub.d/40_pandos` generates the entry from
+the last tx-record.
 
-## Zastrzeżenia implementacyjne (do uwzględnienia, jeśli/gdy to wróci do realizacji)
+## Implementation caveats (to account for if/when this comes back into scope)
 
-1. **Kolejność hooków pacmana:** `pandos-tx-pre.hook` musi wykonać się po
-   hooku `snap-pac` (np. nazwa `zz-pandos-tx-pre.hook`, albo sprawdzenie w
-   skrypcie, czy snapshot już istnieje) — pacman wykonuje hooki w porządku
-   alfanumerycznym nazw plików (to prawdziwy, dokumentowany mechanizm, nie
-   zgadywanie). Inaczej `snapshot_id` będzie `null`.
+1. **Pacman hook ordering:** `pandos-tx-pre.hook` must run after the
+   `snap-pac` hook (e.g. name it `zz-pandos-tx-pre.hook`, or have the script
+   check whether a snapshot already exists) — pacman runs hooks in
+   alphanumeric order of filenames (this is a real, documented mechanism,
+   not a guess). Otherwise `snapshot_id` will be `null`.
 
-2. **`@pandos` i Snapper — POPRAWIONE 2026-10-22 (pierwsza wersja tego
-   zastrzeżenia była błędna):** oryginalna wersja mówiła o wykluczeniu
-   `@pandos` ze Snappera przez `SUBVOLUME_EXCLUDE`. To prawdopodobnie
-   niepotrzebne i niezweryfikowane jako realna opcja Snappera. `@pandos` jako
-   top-level subwolumen (siostrzany do `@`) **nie jest objęty snapshotem `@`
-   z samej architektury Btrfs** — to dokładnie to, co już zweryfikowaliśmy
-   empirycznie dla `@home`/`@log`/`@pkg` (patrz
-   `tests/btrfs-rollback-verification.md` i wiki.archlinux.org/title/Snapper:
-   "snapshot @ nie obejmuje innych subwolumenów"). Do potwierdzenia dla
-   `@pandos` konkretnie w QEMU, jeśli/gdy wrócimy do tego tematu — ale nie
-   zakładać z góry, że trzeba dodatkowy mechanizm wykluczania.
+2. **`@pandos` and Snapper — CORRECTED 2026-10-22 (the first version of this
+   caveat was wrong):** the original version talked about excluding
+   `@pandos` from Snapper via `SUBVOLUME_EXCLUDE`. That's likely unnecessary
+   and was never verified as a real Snapper option. `@pandos` as a
+   top-level subvolume (a sibling of `@`) **is not covered by a snapshot of
+   `@` purely by Btrfs's architecture** — that's exactly what we already
+   verified empirically for `@home`/`@log`/`@pkg` (see
+   `tests/btrfs-rollback-verification.md` and
+   wiki.archlinux.org/title/Snapper: "a snapshot of @ does not cover other
+   subvolumes"). To be confirmed for `@pandos` specifically in QEMU if/when
+   we come back to this topic — but don't assume upfront that an extra
+   exclusion mechanism is needed.
 
-3. **`boot-complete.target` a `graphical.target`:** zweryfikować w QEMU, czy
-   `pandos-boot-confirm.service` uruchamia się PO `graphical.target` (a nie
-   przed). Jeśli przed — rozważyć `After=graphical.target`.
+3. **`boot-complete.target` vs `graphical.target`:** verify in QEMU whether
+   `pandos-boot-confirm.service` starts AFTER `graphical.target` (not
+   before). If before — consider `After=graphical.target`.
 
-## Otwarte pytanie
+## Open question
 
-Czy to w ogóle ma wrócić do realizacji, i kiedy — zależy od tego, czy
-potrzeba "agent sam wycofuje zmiany bez pytania człowieka" kiedyś się
-realnie pojawi. Na razie: nie.
+Whether this ever comes back into scope, and when, depends on whether the
+need for "the agent rolls back changes on its own without asking the
+human" ever genuinely comes up. For now: no.

@@ -1,32 +1,34 @@
-# Weryfikacja: boot w QEMU zainstalowanego obrazu (wolna pętla)
+# Verification: booting the installed image in QEMU (slow loop)
 
-**Data:** 2026-10-22
-**Cel:** przetestować w QEMU ten sam, już zainstalowany obraz dysku z udanej
-8. próby szybkiej pętli (`tests/full-config-verification.md`) — bez
-ponownego odpalania `archinstall`, bez serwera HTTP z configiem. Cztery
-konkretne punkty: boot do COSMIC, PandaCode, Snapper, `snap-pac`.
+**Date:** 2026-10-22
+**Goal:** test in QEMU the same already-installed disk image from the
+successful 8th attempt of the fast loop (`tests/full-config-verification.md`)
+— without re-running `archinstall`, without an HTTP server serving the
+config. Four specific points: booting to COSMIC, PandaCode, Snapper,
+`snap-pac`.
 
-## Środowisko
+## Environment
 
-QEMU 8.2.2 + KVM, OVMF (UEFI, `/usr/share/OVMF/OVMF_CODE_4M.fd`), obraz
-`pandos-full.img` (14GiB, ten sam plik co w teście szybkiej pętli) jako
-`virtio`, port SSH przekierowany `hostfwd=tcp::2223-:22`, `-vga virtio
--display none` + gniazdo QMP do zrzutów ekranu (`screendump`) — weryfikacja
-wizualna programowa, bez angażowania Jaro do patrzenia na okno.
+QEMU 8.2.2 + KVM, OVMF (UEFI, `/usr/share/OVMF/OVMF_CODE_4M.fd`), the
+`pandos-full.img` image (14GiB, the same file as in the fast-loop test) as
+`virtio`, SSH port forwarded `hostfwd=tcp::2223-:22`, `-vga virtio -display
+none` plus a QMP socket for screenshots (`screendump`) — programmatic
+visual verification, without needing Jaro to look at a window.
 
-## 1. Boot do COSMIC — NIE DZIAŁA, przyczyna zidentyfikowana precyzyjnie
+## 1. Booting to COSMIC — DOES NOT WORK, cause identified precisely
 
-**Wynik: system NIE bootuje do graficznego COSMIC.** Zrzut ekranu (QMP
-`screendump`) pokazuje zwykły tekstowy prompt logowania na tty1
-(`pandos login:`). To NIE jest problem renderowania Wayland/COSMIC w VM
-(do którego nawet nie doszliśmy) — to brak dwóch kroków w provisioningu:
+**Result: the system does NOT boot to graphical COSMIC.** The screenshot
+(QMP `screendump`) shows a plain text login prompt on tty1 (`pandos
+login:`). This is NOT a Wayland/COSMIC rendering problem in the VM (which
+we hadn't even reached yet) — it's two missing steps in provisioning:
 
-1. `greetd.service` jest **disabled** (nigdy nie włączony w `custom_commands`).
-2. Nawet po ręcznym odpaleniu `greetd` (zadziałało bez błędu, proces wstał
-   poprawnie), użył **domyślnego** configu (`/etc/greetd/config.toml`)
-   wskazującego na wbudowany tekstowy greeter `agreety --cmd /bin/sh`, NIE
-   na COSMIC. Pakiet `cosmic-greeter` wysyła WŁASNY, gotowy szablon configu
-   pod `/etc/greetd/cosmic-greeter.toml`:
+1. `greetd.service` is **disabled** (never enabled in `custom_commands`).
+2. Even after manually starting `greetd` (which worked with no error, the
+   process came up fine), it used the **default** config
+   (`/etc/greetd/config.toml`) pointing at the built-in text greeter
+   `agreety --cmd /bin/sh`, NOT COSMIC. The `cosmic-greeter` package ships
+   its OWN, ready-made config template at
+   `/etc/greetd/cosmic-greeter.toml`:
    ```toml
    [terminal]
    vt = "1"
@@ -36,35 +38,35 @@ wizualna programowa, bez angażowania Jaro do patrzenia na okno.
    command = "cosmic-greeter-start"
    user = "cosmic-greeter"
    ```
-   ale nic nigdy nie skopiowało go na `/etc/greetd/config.toml`.
+   but nothing ever copied it to `/etc/greetd/config.toml`.
 
-**Konkretna poprawka do `provision.sh` na następną iterację (niewdrożona w
-tym teście — to raport diagnostyczny, nie poprawka):**
+**Specific fix for `provision.sh` for the next iteration (not applied in
+this test — this is a diagnostic report, not a fix):**
 ```sh
 cp /etc/greetd/cosmic-greeter.toml /etc/greetd/config.toml
 systemctl enable greetd.service
 ```
-Po tej poprawce rzeczywiste renderowanie COSMIC/Wayland w headless QEMU
-(software rendering, brak przekazanego GPU) to osobne, jeszcze nieprzetestowane
-ryzyko — odnotowane jako kolejny krok, nie zakładać z góry że zadziała.
+After this fix, actual COSMIC/Wayland rendering in a headless QEMU
+(software rendering, no passed-through GPU) is a separate, still-untested
+risk — noted as the next step, not assumed to work upfront.
 
-## 2. PandaCode — zainstalowany poprawnie, panikuje bez sesji graficznej (oczekiwane)
+## 2. PandaCode — installed correctly, panics without a graphical session (expected)
 
-`/usr/share/applications/pandacode.desktop` obecny i poprawny.
-Ręczne uruchomienie `/opt/pandacode/PandaCode.AppImage` przez SSH:
+`/usr/share/applications/pandacode.desktop` present and correct. Manually
+running `/opt/pandacode/PandaCode.AppImage` over SSH:
 
 ```
 thread 'main' panicked at .../tao-0.35.3/.../event_loop.rs:217:53:
 Failed to initialize gtk backend!: BoolError { message: "Failed to initialize GTK", ... }
 ```
 
-To jest **oczekiwany** skutek punktu 1 (brak sesji graficznej w ogóle), nie
-defekt PandaCode czy `fuse2`. Ważne: binarka **startuje i dochodzi do
-inicjalizacji GTK** przed panic — potwierdza to, że AppImage się poprawnie
-rozpakowuje/uruchamia (żaden błąd "cannot execute", żaden błąd FUSE). Realny
-test działania PandaCode wymaga najpierw naprawy punktu 1.
+This is the **expected** consequence of point 1 (no graphical session at
+all), not a defect in PandaCode or `fuse2`. Important: the binary **starts
+and gets as far as GTK initialization** before the panic — confirming the
+AppImage unpacks/launches correctly (no "cannot execute" error, no FUSE
+error). A real test of PandaCode working requires fixing point 1 first.
 
-## 3. Snapper — DZIAŁA
+## 3. Snapper — WORKS
 
 ```
 $ snapper --no-dbus list-configs
@@ -74,21 +76,21 @@ home   | /home
 root   | /
 ```
 
-Manualny snapshot (`snapper -c root create --description manual-test-snapshot`)
-utworzony bez błędu. Dodatkowo zauważone: timeline timer już zdążył zrobić
-swój pierwszy automatyczny snapshot (`timeline`, ok. 23 min po boocie) —
-potwierdza, że `snapper-timeline.timer` faktycznie działa w tle, nie tylko
-jest "enabled" na papierze.
+A manual snapshot (`snapper -c root create --description
+manual-test-snapshot`) created with no error. Also noticed: the timeline
+timer had already made its first automatic snapshot (`timeline`, about 23
+min after boot) — confirming `snapper-timeline.timer` is actually running
+in the background, not just "enabled" on paper.
 
-## 4. `snap-pac` — DZIAŁA, po jednej dodatkowej poprawce znalezionej po drodze
+## 4. `snap-pac` — WORKS, after one extra fix found along the way
 
-Pierwsza próba (`pacman -S nano`) nie powiodła się z innego, niezwiązanego
-powodu: `error: nano: signature ... is unknown trust` — keyring pacmana z
-`pacstrap` nie miał zaufanego klucza akurat tego maintainera pakietu. To
-osobny, realny problem provisioningu (nie dotyczy `snap-pac` samego w sobie):
-**`custom_commands` powinno zawierać `pacman-key --populate archlinux`
-jawnie**, nie polegać na tym, że `pacstrap` już to w pełni zrobił. Po ręcznym
-odpaleniu tej komendy i retry:
+The first attempt (`pacman -S nano`) failed for a different, unrelated
+reason: `error: nano: signature ... is unknown trust` — the pacman keyring
+from `pacstrap` didn't have a trusted key for that particular package
+maintainer. This is a separate, real provisioning problem (not related to
+`snap-pac` itself): **`custom_commands` should explicitly include
+`pacman-key --populate archlinux`**, not rely on `pacstrap` having already
+done this fully. After manually running that command and retrying:
 
 ```
 :: Running pre-transaction hooks...
@@ -101,221 +103,225 @@ installing nano...
 ==> root: 4
 ```
 
-`snapper -c root list` po fakcie pokazuje wpisy #3 (`pre`) i #4 (`post`, z
-`Pre # = 3`) z poprawnym opisem `pacman -S --noconfirm nano` — **potwierdzone
-bezpośrednio, nie tylko przez brak błędu.**
+`snapper -c root list` afterward shows entries #3 (`pre`) and #4 (`post`,
+with `Pre # = 3`) with the correct description `pacman -S --noconfirm
+nano` — **confirmed directly, not just by the absence of an error.**
 
-## Podsumowanie i konkretne poprawki do następnej iteracji `provision.sh`
+## Summary and specific fixes for the next `provision.sh` iteration
 
-| # | Punkt | Wynik | Akcja |
+| # | Point | Result | Action |
 |---|-------|-------|-------|
-| 1 | Boot do COSMIC | ❌ nie działa (brak configu greetd) | dodać `cp .../cosmic-greeter.toml config.toml` + `systemctl enable greetd` |
-| 2 | PandaCode | ✅ zainstalowany poprawnie, wymaga punktu 1 | brak akcji, zależne od 1 |
-| 3 | Snapper | ✅ w pełni działa | brak akcji |
-| 4 | snap-pac | ✅ działa, po poprawce keyringu | dodać `pacman-key --populate archlinux` jawnie do `custom_commands` |
+| 1 | Booting to COSMIC | ❌ doesn't work (missing greetd config) | add `cp .../cosmic-greeter.toml config.toml` + `systemctl enable greetd` |
+| 2 | PandaCode | ✅ installed correctly, depends on point 1 | no action, depends on 1 |
+| 3 | Snapper | ✅ fully works | no action |
+| 4 | snap-pac | ✅ works, after the keyring fix | explicitly add `pacman-key --populate archlinux` to `custom_commands` |
 
-Żaden z tych czterech punktów nie jest "ślepą zagadką" — każdy ma
-zidentyfikowaną, konkretną przyczynę i gotową poprawkę do wdrożenia w
-kolejnej iteracji configu, zanim przejdziemy do `archiso`.
+None of these four points is a "blind mystery" — each has an identified,
+specific cause and a ready fix to apply in the next config iteration,
+before moving on to `archiso`.
 
-## Artefakty (pierwszy przebieg, przed poprawkami)
+## Artifacts (first pass, before the fixes)
 
-`screendump.png` (zrzut ekranu tty1 login prompt), `pandos-full.img` (ten sam
-obraz z testu szybkiej pętli, teraz z dodatkowym pakietem `nano` i kilkoma
-dodatkowymi snapshotami Snappera z tego testu) — oba w scratchpadzie sesji,
-nie w repo.
+`screendump.png` (screenshot of the tty1 login prompt), `pandos-full.img`
+(the same image from the fast-loop test, now with the extra `nano` package
+and a few extra Snapper snapshots from this test) — both in the session's
+scratchpad, not in the repo.
 
 ---
 
-## Powtórka po poprawkach (2026-10-22, ten sam dzień) — WSZYSTKIE 4 PUNKTY PRZESZŁY
+## Re-run after the fixes (2026-10-22, same day) — ALL 4 POINTS PASSED
 
-Dwie poprawki wdrożone w `pandos-config/provision.sh`:
-1. `pacman-key --init && pacman-key --populate archlinux` na samym początku.
-2. `cp /etc/greetd/cosmic-greeter.toml /etc/greetd/config.toml` **przed**
-   `systemctl enable greetd.service` (kolejność ma znaczenie — potwierdzone).
+Two fixes applied to `pandos-config/provision.sh`:
+1. `pacman-key --init && pacman-key --populate archlinux` right at the
+   start.
+2. `cp /etc/greetd/cosmic-greeter.toml /etc/greetd/config.toml` **before**
+   `systemctl enable greetd.service` (order matters — confirmed).
 
-Pełna szybka pętla uruchomiona ponownie od zera na świeżym obrazie z tymi
-poprawkami (`ARCHINSTALL_EXIT_CODE=0`, `POST_PROCESSING_OK`), potem ten sam
-obraz zabootowany w QEMU jeszcze raz.
+The full fast loop run again from scratch on a fresh image with these
+fixes (`ARCHINSTALL_EXIT_CODE=0`, `POST_PROCESSING_OK`), then the same
+image booted in QEMU again.
 
-### 1. Boot do COSMIC — DZIAŁA
+### 1. Booting to COSMIC — WORKS
 
-Zrzut ekranu przez QMP `screendump` pokazuje **prawdziwy graficzny greeter
-COSMIC**: zegar, data, tapeta (mgławica Oriona), pole hasła z nazwą
-użytkownika `pandos`, ikony dostępności/klawiatury/zasilania u dołu.
-Zasymulowano wpisanie hasła przez QMP `send-key` (`pandos` + Enter) —
-**pełne zalogowanie się powiodło**, kolejny zrzut ekranu pokazuje w pełni
-działający pulpit COSMIC: górny panel (Workspaces/Applications, zegar, tray
-z ikonami sieci/dźwięku/baterii), dolny dok z launcherami aplikacji.
-Weryfikacja przez SSH: wszystkie procesy `cosmic-*` (comp, panel, launcher,
-app-library, workspaces, applets, itd.) oraz `xdg-desktop-portal-cosmic`
-żywe pod użytkownikiem `pandos` na `tty1`. Software rendering w headless
-QEMU bez przekazanego GPU zadziałał bez problemu — obawa z wcześniejszego
-raportu okazała się niepotrzebna.
+A screenshot via QMP `screendump` shows a **real graphical COSMIC
+greeter**: clock, date, wallpaper (the Orion Nebula), a password field with
+username `pandos`, accessibility/keyboard/power icons at the bottom.
+Simulated typing the password via QMP `send-key` (`pandos` + Enter) —
+**full login succeeded**, the next screenshot shows a fully working COSMIC
+desktop: top panel (Workspaces/Applications, clock, tray with
+network/sound/battery icons), bottom dock with app launchers. Verified over
+SSH: all `cosmic-*` processes (comp, panel, launcher, app-library,
+workspaces, applets, etc.) and `xdg-desktop-portal-cosmic` alive under user
+`pandos` on `tty1`. Software rendering in headless QEMU with no
+passed-through GPU worked with no problem — the concern raised in the
+earlier report turned out to be unnecessary.
 
-### 2. PandaCode pod XWayland — DZIAŁA (po znalezieniu właściwego DISPLAY)
+### 2. PandaCode under XWayland — WORKS (after finding the right DISPLAY)
 
-Pierwsza próba (`DISPLAY=:0`) dalej panikowała na GTK — bo `:0` należy do
-**osobnej** sesji XWayland greetera (`cosmic-greeter`), nie do zalogowanej
-sesji `pandos`. Rzeczywista sesja `pandos` ma swój XWayland na `:1`
-(potwierdzone: `ps aux | grep -i xwayland` → `Xwayland :1 ...`, gniazdo
-`/tmp/.X11-unix/X1` należące do `pandos`). Z poprawnym
-`DISPLAY=:1 WAYLAND_DISPLAY=wayland-1`: **PandaCode przechodzi przez
-inicjalizację GTK bez panikowania** — zamiast tego dostaje tylko ostrzeżenia
+The first attempt (`DISPLAY=:0`) still panicked on GTK — because `:0`
+belongs to the greeter's **separate** XWayland session (`cosmic-greeter`),
+not the logged-in `pandos` session. The actual `pandos` session has its own
+XWayland on `:1` (confirmed: `ps aux | grep -i xwayland` → `Xwayland :1
+...`, socket `/tmp/.X11-unix/X1` owned by `pandos`). With the correct
+`DISPLAY=:1 WAYLAND_DISPLAY=wayland-1`: **PandaCode gets through GTK
+initialization without panicking** — instead it only gets warnings
 `MESA-EGL: DRI3 error: Could not get DRI3 device` / `failed to create dri2
-screen` — to oczekiwane ograniczenie software renderingu w headless QEMU bez
-prawdziwego GPU (`virtio-vga` bez `virgl`), nie defekt PandaCode ani naszego
-configu.
+screen` — this is the expected limitation of software rendering in
+headless QEMU without a real GPU (`virtio-vga` without `virgl`), not a
+defect in PandaCode or our config.
 
-### 3. Snapper — nadal DZIAŁA bez zmian
+### 3. Snapper — still WORKS, unchanged
 
-`snapper --no-dbus list-configs` → `root`/`home` poprawnie.
+`snapper --no-dbus list-configs` → `root`/`home` correctly.
 
-### 4. snap-pac — DZIAŁA, TERAZ bez żadnej ręcznej naprawy w locie
+### 4. snap-pac — WORKS, NOW with no manual on-the-fly fix at all
 
-`pacman -S nano` **za pierwszym razem, bez błędu keyringu** (w przeciwieństwie
-do pierwszego przebiegu testu) — `pacman-key --populate archlinux` wbudowane
-w `provision.sh` rozwiązało to raz na zawsze przy budowie obrazu. Pre/post
-snapshoty (`#1 pre` / `#2 post`, poprawny opis `pacman -S --noconfirm nano`)
-utworzone automatycznie.
+`pacman -S nano` **worked the first time, with no keyring error** (unlike
+the first test run) — `pacman-key --populate archlinux` baked into
+`provision.sh` fixed this once and for all at image-build time. Pre/post
+snapshots (`#1 pre` / `#2 post`, correct description `pacman -S --noconfirm
+nano`) created automatically.
 
-## Wniosek
+## Conclusion
 
-**MVP configu jest kompletne i w pełni zweryfikowane end-to-end**: instalacja
-przez `archinstall` w jednym przebiegu → boot w QEMU → graficzny COSMIC →
-zalogowanie → PandaCode się odpala → Snapper/`snap-pac` działają automatycznie
-na żywym systemie. Jedyne pozostałe ograniczenie to brak akceleracji GPU w
-tym konkretnym środowisku testowym (headless QEMU, software rendering) — nie
-dotyczy poprawności samego configu PandOS.
+**The MVP config is complete and fully verified end-to-end**: install via
+`archinstall` in a single pass → boot in QEMU → graphical COSMIC → login →
+PandaCode launches → Snapper/`snap-pac` work automatically on the live
+system. The only remaining limitation is the lack of GPU acceleration in
+this particular test environment (headless QEMU, software rendering) — not
+related to the correctness of the PandOS config itself.
 
 ---
 
-## Scenariusz B: instalacja z ISO (`archiso` + `cidata`, w pełni bezobsługowa) — ZATRZYMANE, przyczyna zidentyfikowana
+## Scenario B: installing from the ISO (`archiso` + `cidata`, fully unattended) — STOPPED, cause identified
 
-**Data:** 2026-10-22. **Cel:** zbudować instalowalne ISO (`pandos-iso/`,
-fork profilu `releng`) i przetestować w QEMU pełny, bezobsługowy scenariusz:
-boot z ISO → wykrycie dysku `cidata` → `autoinstall.sh` →
+**Date:** 2026-10-22. **Goal:** build an installable ISO (`pandos-iso/`, a
+fork of the `releng` profile) and test the full unattended scenario in
+QEMU: boot from the ISO → detect the `cidata` drive → `autoinstall.sh` →
 `archinstall --config ... --silent` → post-processing (`@snapshots`,
-`grub-mkconfig`, `genfstab`) → `systemctl reboot` → oczekiwany boot
-zainstalowanego systemu z dysku.
+`grub-mkconfig`, `genfstab`) → `systemctl reboot` → the installed system is
+expected to boot from disk.
 
-### Co faktycznie się stało
+### What actually happened
 
-Proces QEMU (`qemu-system-x86_64 ... -drive file=target-disk.img,...
+The QEMU process (`qemu-system-x86_64 ... -drive file=target-disk.img,...
 -drive file=cidata.img,... -drive file=out/pandos-....iso,media=cdrom ...`)
-działał **ok. 6h16min** (14:46–21:04) bez osiągnięcia stabilnego końcowego
-stanu. Monitorowanie przez QMP `screendump` (nie przez forka, bezpośrednio)
-pokazało powtarzający się cykl:
+ran for **about 6h16min** (14:46–21:04) without reaching a stable end
+state. Monitoring via QMP `screendump` (directly, not through the fork)
+showed a repeating cycle:
 
-1. Instalacja pakietów (COSMIC + reszta, 188 pakietów) kończy się, dochodzi
-   do post-transaction hooków pacmana — w jednym z przebiegów zaobserwowano
-   `(21/21) Performing snapper post snapshots...` natychmiast po czym
-   `fatal library error, lookup self` w logu hooka. **Nieistotne dla wyniku
-   końcowego** — to komunikat z pojedynczego hooka pacmana (prawdopodobnie
-   `snap-pac`/`grub-btrfsd` przy próbie `/proc/self/exe` w chroot), nie
-   przerwał transakcji ani samego `archinstall` (co potwierdza fakt, że
-   zaraz potem nastąpił reboot zgodny ze skryptem, patrz niżej) — **do
-   potwierdzenia precyzyjnie przy następnej iteracji, nie olewać całkowicie,
-   ale nie jest to przyczyna pętli opisanej niżej.**
-2. Krótko po tym: ekran TianoCore/OVMF (reboot). To pasuje dokładnie do
-   końcówki `autoinstall.sh`: `echo "Install complete. Rebooting in 10s..."`
-   → `sleep 10` → `systemctl reboot`.
-3. Zamiast wystartować zainstalowany system z `target-disk.img`, VM **wraca
-   do live ISO**: nowy proces `autoinstall.sh` (inny PID), ponowne wykrycie
-   `cidata`, ponowne `archinstall --config ... --silent` **od zera, na tym
-   samym dysku**.
-4. Krok 1–3 powtórzył się wielokrotnie w ciągu ponad 6 godzin (zaobserwowane
-   bezpośrednio: check5/6 ok. 17:53, check8/9 ok. 17:54–17:56, kolejny pełny
-   cykl od zera widoczny o 21:01 — a więc **co najmniej 3 pełne cykle
-   instalacji w jednej sesji testowej**, prawdopodobnie więcej pomiędzy
-   punktami kontrolnymi, których nie rejestrowałem w sposób ciągły).
+1. Package installation (COSMIC + the rest, 188 packages) finishes,
+   pacman's post-transaction hooks run — in one pass, `(21/21) Performing
+   snapper post snapshots...` was observed, immediately followed by `fatal
+   library error, lookup self` in the hook's log. **Irrelevant to the final
+   outcome** — this is a message from a single pacman hook (probably
+   `snap-pac`/`grub-btrfsd` attempting `/proc/self/exe` inside a chroot),
+   it didn't abort the transaction or `archinstall` itself (confirmed by
+   the fact that a reboot matching the script followed right after, see
+   below) — **to be pinned down precisely in the next iteration, not
+   dismissed entirely, but it is not the cause of the loop described
+   below.**
+2. Shortly after: a TianoCore/OVMF screen (reboot). This matches exactly
+   the end of `autoinstall.sh`: `echo "Install complete. Rebooting in
+   10s..."` → `sleep 10` → `systemctl reboot`.
+3. Instead of starting the installed system from `target-disk.img`, the VM
+   **goes back to the live ISO**: a new `autoinstall.sh` process (different
+   PID), `cidata` detected again, `archinstall --config ... --silent` run
+   again **from scratch, on the same disk**.
+4. Steps 1–3 repeated multiple times over more than 6 hours (directly
+   observed: check5/6 around 17:53, check8/9 around 17:54–17:56, another
+   full cycle from scratch seen at 21:01 — so **at least 3 full install
+   cycles in one test session**, likely more between checkpoints that
+   weren't recorded continuously).
 
-Proces zatrzymany ręcznie (`kill`) na wyraźne polecenie — **nie uznajemy
-tego za "instalacja się nie udała"**, tylko za "test się nigdy nie kończy",
-co to dwie różne rzeczy.
+The process was stopped manually (`kill`) on explicit instruction — **this
+is not treated as "the install failed"**, but as "the test never ends" —
+those are two different things.
 
-### Przyczyna — zidentyfikowana, nie zgadywana
+### Cause — identified, not guessed
 
-Dwa fakty, oba zweryfikowane bezpośrednio w kodzie i w rzeczywistym poleceniu
-uruchomienia QEMU:
+Two facts, both verified directly in the code and in the actual QEMU
+launch command:
 
-1. **`autoinstall.sh` kończy się komentarzem wprost mówiącym o fizycznym
-   usunięciu nośnika:** `"Install complete. Rebooting in 10s (remove
-   installation media now)."` — to poprawne i oczekiwane dla instalatora na
-   prawdziwym sprzęcie (USB/DVD, operator wyjmuje nośnik), ale **nic w
-   testowej automatyzacji QEMU nie robi tego odpowiednika** (nie ma
-   odłączenia/wysunięcia CD-ROM przed rebootem).
-2. **Polecenie uruchamiające QEMU nie ma żadnego wymuszonego porządku
-   bootowania** — zweryfikowane bezpośrednio w `ps aux`: brak flagi
-   `-boot order=...` i brak `bootindex=` na którymkolwiek `-drive`. Firmware
-   (OVMF) wybiera więc urządzenie rozruchowe wg własnej domyślnej logiki, a
-   `grub-install --target=x86_64-efi --efi-directory=/boot
-   --bootloader-id=PANDOS --removable` (w `provision.sh`/`autoinstall.sh`)
-   zapisuje bootloader pod **fallbackową** ścieżką EFI
-   (`/EFI/BOOT/BOOTX64.EFI`) — dokładnie tę samą konwencjonalną ścieżkę,
-   pod którą archiso publikuje własny rozruch na ISO. Gdy oba urządzenia
-   (dysk i CD-ROM) mają bootowalny plik pod tą samą fallbackową ścieżką, a
-   nic nie wymusza priorytetu, OVMF w tym środowisku konsekwentnie wybiera
-   CD-ROM.
+1. **`autoinstall.sh` ends with a comment explicitly about physically
+   removing the media:** `"Install complete. Rebooting in 10s (remove
+   installation media now)."` — this is correct and expected for an
+   installer on real hardware (USB/DVD, the operator removes the media),
+   but **nothing in the QEMU test automation does the equivalent of that**
+   (there's no detach/eject of the CD-ROM before the reboot).
+2. **The command that launches QEMU has no forced boot order at all** —
+   confirmed directly in `ps aux`: no `-boot order=...` flag and no
+   `bootindex=` on any `-drive`. So the firmware (OVMF) picks the boot
+   device according to its own default logic, and `grub-install
+   --target=x86_64-efi --efi-directory=/boot --bootloader-id=PANDOS
+   --removable` (in `provision.sh`/`autoinstall.sh`) writes the bootloader
+   to the **fallback** EFI path (`/EFI/BOOT/BOOTX64.EFI`) — exactly the
+   same conventional path that archiso itself publishes its own boot entry
+   under on the ISO. When both devices (disk and CD-ROM) have a bootable
+   file at the same fallback path, and nothing forces a priority, OVMF in
+   this environment consistently picks the CD-ROM.
 
-**To jest problem samego testowego środowiska QEMU, nie błąd logiki
-instalacji PandOS** — na prawdziwym sprzęcie z fizycznie wyjętym nośnikiem
-ten scenariusz by nie wystąpił. Ale do przetestowania scenariusza B w QEMU
-trzeba to jawnie obejść.
+**This is a problem with the QEMU test environment itself, not a bug in
+PandOS's install logic** — on real hardware with the media physically
+removed, this scenario wouldn't occur. But testing scenario B in QEMU
+requires explicitly working around it.
 
-### Rekomendowana poprawka (do wdrożenia w następnej iteracji, NIEWDROŻONA w tym teście)
+### Recommended fix (to apply in the next iteration, NOT APPLIED in this test)
 
-Dwie niezależne, uzupełniające się opcje — zalecane wdrożenie obu:
+Two independent, complementary options — recommended to apply both:
 
-1. **W poleceniu QEMU:** dodać `bootindex=1` do `-drive
-   file=target-disk.img,...` i wyższy numer (np. `bootindex=2`) do
-   `-drive file=...iso,media=cdrom` — to standardowy, udokumentowany sposób
-   QEMU na wymuszenie priorytetu dysku nad CD-ROM niezależnie od tego, co
-   zawiera NVRAM/fallback EFI obu urządzeń.
-2. **Opcjonalnie, dodatkowe zabezpieczenie:** po potwierdzonym
-   `POST_PROCESSING_OK` (przed `systemctl reboot`), odłączyć CD-ROM
-   programowo przez QMP z zewnątrz (`blockdev-change-medium` / `eject`) —
-   odpowiednik "wyjęcia nośnika" z komentarza w skrypcie, ale sterowany
-   przez harness testowy, nie przez `autoinstall.sh` (który nie ma dostępu
-   do QMP swojego własnego hosta).
+1. **In the QEMU command:** add `bootindex=1` to `-drive
+   file=target-disk.img,...` and a higher number (e.g. `bootindex=2`) to
+   `-drive file=...iso,media=cdrom` — this is the standard, documented way
+   in QEMU to force the disk's priority over the CD-ROM regardless of what
+   each device's NVRAM/fallback EFI contains.
+2. **Optionally, as extra insurance:** after `POST_PROCESSING_OK` is
+   confirmed (before `systemctl reboot`), detach the CD-ROM programmatically
+   via QMP from the outside (`blockdev-change-medium` / `eject`) — the
+   equivalent of "removing the media" from the script's comment, but driven
+   by the test harness, not by `autoinstall.sh` (which has no access to its
+   own host's QMP).
 
-### Co NIE jest w tym momencie potwierdzone (świadomie, do zrobienia w następnej iteracji)
+### What is NOT confirmed at this point (deliberately, to do in the next iteration)
 
-- Dokładna liczba pełnych cykli reinstalacji w tej 6-godzinnej sesji —
-  zaobserwowano **co najmniej 3** bezpośrednio przez zrzuty QMP, realna
-  liczba może być wyższa (zrzuty robione punktowo, nie w sposób ciągły).
-  Nieistotne po fakcie — przyczyna (brak `bootindex`) już zidentyfikowana i
-  poprawiona, patrz niżej.
+- The exact number of full reinstall cycles in this 6-hour session — **at
+  least 3** observed directly via QMP screenshots, the real number could be
+  higher (screenshots were taken at specific points, not continuously).
+  Moot after the fact — the cause (missing `bootindex`) has already been
+  identified and fixed, see below.
 
-### ⚠️ Znany problem, NIEBLOKUJĄCY (do zbadania później, nie teraz)
+### ⚠️ Known issue, NON-BLOCKING (to investigate later, not now)
 
-`fatal library error, lookup self` pojawia się w logu hooka pacmana
-(prawdopodobnie `snap-pac` lub `grub-btrfsd` przy próbie odczytu
-`/proc/self/exe` w `arch-chroot`) w trakcie `(21/21) Performing snapper post
-snapshots...` podczas instalacji pakietów. **Nie wpływa na wynik** — build
-kończy się poprawnie, system bootuje, Snapper/Btrfs działają zweryfikowane
-(patrz sekcja niżej). Ale nie jest zbadane, skąd dokładnie się bierze. Do
-sprawdzenia kiedyś przez `journalctl` w zainstalowanym systemie, **nie przed
-ogłoszeniem MVP** — to nie blokuje domknięcia ISO.
+`fatal library error, lookup self` appears in a pacman hook's log (likely
+`snap-pac` or `grub-btrfsd` trying to read `/proc/self/exe` inside
+`arch-chroot`) during `(21/21) Performing snapper post snapshots...` while
+installing packages. **Does not affect the outcome** — the build finishes
+correctly, the system boots, Snapper/Btrfs work as verified (see the
+section below). But it hasn't been investigated where exactly it comes
+from. To be checked sometime via `journalctl` on the installed system,
+**not before announcing the MVP** — this does not block closing out the
+ISO.
 
-### Poprawka `bootindex` — WDROŻONA I POTWIERDZONA (ten sam dzień, kolejny przebieg)
+### `bootindex` fix — APPLIED AND CONFIRMED (same day, next run)
 
-Poprawka #1 z sekcji wyżej wdrożona bezpośrednio w poleceniu QEMU (nie w
-repo — to parametr testowego harnessu, nie configu PandOS): dysk docelowy
-podpięty przez `-device virtio-blk-pci,drive=...,bootindex=1`, CD-ROM przez
-`-device virtio-blk-pci,drive=...,bootindex=2` (zwykłe `-drive ...,bootindex=N`
-nie działa z `format=raw` — QEMU wymaga jawnego `-device` dla tej opcji,
-potwierdzone błędem przy pierwszej próbie: *"Block format 'raw' does not
-support the option 'bootindex'"*).
+Fix #1 from the section above applied directly in the QEMU command (not in
+the repo — this is a test-harness parameter, not a PandOS config setting):
+the target disk attached via `-device
+virtio-blk-pci,drive=...,bootindex=1`, the CD-ROM via `-device
+virtio-blk-pci,drive=...,bootindex=2` (plain `-drive ...,bootindex=N`
+doesn't work with `format=raw` — QEMU requires an explicit `-device` for
+this option, confirmed by the error on the first attempt: *"Block format
+'raw' does not support the option 'bootindex'"*).
 
-**Wynik: boot z dysku zadziałał za pierwszym razem, bez powrotu do CD-ROM.**
-Zrzut ekranu QMP od razu po starcie VM (dysk zawierał już dane z wcześniej
-ukończonego cyklu instalacji z tej samej sesji) pokazał **graficzny greeter
-COSMIC z użytkownikiem `pandos`** — nie konsolowy instalator. Zasymulowane
-logowanie przez QMP `send-key` → **pełny, zalogowany pulpit COSMIC**
-(Workspaces/Applications, zegar, tray, dok z launcherami).
+**Result: booting from disk worked on the first try, with no fallback to
+the CD-ROM.** A QMP screenshot right after the VM started (the disk already
+had data from a previously completed install cycle in the same session)
+showed the **graphical COSMIC greeter with user `pandos`** — not the
+console installer. Simulated login via QMP `send-key` → **a full, logged-in
+COSMIC desktop** (Workspaces/Applications, clock, tray, dock with
+launchers).
 
-Weryfikacja przez SSH (port 2227) na żywym, zainstalowanym systemie:
+Verification over SSH (port 2227) on the live, installed system:
 
 ```
 $ systemctl is-active graphical.target greetd
@@ -330,8 +336,8 @@ ID 256 gen 27 top level 5 path @
 ID 257 gen 27 top level 5 path @home
 ID 258 gen 27 top level 5 path @log
 ID 259 gen 13 top level 5 path @pkg
-ID 264 gen 18 top level 5 path @snapshots       (top-level, jak zaplanowano)
-ID 263 gen 16 top level 257 path @home/.snapshots  (snap-pac, oczekiwane)
+ID 264 gen 18 top level 5 path @snapshots       (top-level, as planned)
+ID 263 gen 16 top level 257 path @home/.snapshots  (snap-pac, expected)
 
 $ sudo snapper --no-dbus -c root list
 0 | single | ... | current
@@ -341,18 +347,18 @@ pandos-root-before-change
 home-marker: should survive any root rollback
 ```
 
-Układ subwolumenów dokładnie zgodny z projektem (`@`, `@home`, `@log`,
-`@pkg`, `@snapshots` top-level). `PandaCode.AppImage` obecny
-(93 854 200 bajtów, wykonywalny). Uruchomienie go przez SSH bez sesji
-graficznej panikuje na GTK — **to ten sam, już wcześniej udokumentowany i
-zrozumiany przypadek** (brak `DISPLAY`/`WAYLAND_DISPLAY` w sesji SSH, patrz
-punkt 2 w teście powyżej), nie nowy problem — nie powtarzano pełnej
-weryfikacji z poprawnym `DISPLAY`, bo mechanizm już potwierdzony wcześniej
-na tym samym configu.
+The subvolume layout exactly matches the design (`@`, `@home`, `@log`,
+`@pkg`, top-level `@snapshots`). `PandaCode.AppImage` present (93,854,200
+bytes, executable). Running it over SSH without a graphical session panics
+on GTK — **this is the same, already documented and understood case**
+(missing `DISPLAY`/`WAYLAND_DISPLAY` in the SSH session, see point 2 in the
+test above), not a new problem — full verification with the correct
+`DISPLAY` wasn't repeated, since the mechanism was already confirmed
+earlier on the same config.
 
-**Wniosek: scenariusz B (ISO + `cidata`, w pełni bezobsługowa instalacja)
-działa end-to-end.** Jedyną rzeczywistą usterką była kolejność bootowania w
-testowym poleceniu QEMU — po jej poprawieniu system bootuje bezpośrednio do
-działającego COSMIC za pierwszym razem, bez pętli. Poprawka `bootindex`
-powinna zostać zapisana na stałe w docelowym skrypcie uruchamiającym testy
-QEMU dla tego projektu (do zrobienia przy porządkowaniu `pandos-iso/`).
+**Conclusion: scenario B (ISO + `cidata`, fully unattended install) works
+end-to-end.** The only real defect was the boot order in the QEMU test
+command — once fixed, the system boots straight to a working COSMIC on the
+first try, with no loop. The `bootindex` fix should be made permanent in
+this project's QEMU test-launch script (to be done when tidying up
+`pandos-iso/`).

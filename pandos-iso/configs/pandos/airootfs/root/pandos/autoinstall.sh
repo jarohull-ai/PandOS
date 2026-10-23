@@ -9,7 +9,7 @@
 # (the booted live ISO), so none of the build-container workarounds
 # (localectl stub, arch-chroot -S stripping) are needed here - archinstall's
 # own arch-chroot/localectl calls work natively.
-set -x
+set -ex
 exec > >(tee -a /var/log/pandos-autoinstall.log) 2>&1
 
 CONFIG_SRC=/root/pandos/user_configuration.json
@@ -20,7 +20,7 @@ udevadm settle
 # blkid -L is case-sensitive and real-world tools (Packer, Proxmox, libvirt,
 # mkfs.fat's own uppercasing of FAT labels) disagree on "cidata" vs "CIDATA" -
 # match either.
-CIDATA_DEV=$(blkid -L cidata 2>/dev/null || blkid -L CIDATA 2>/dev/null)
+CIDATA_DEV=$(blkid -L cidata 2>/dev/null || blkid -L CIDATA 2>/dev/null || true)
 if [ -z "$CIDATA_DEV" ]; then
   echo "No cidata-labeled drive found - staying interactive."
   cat > /etc/motd <<'EOF'
@@ -42,21 +42,36 @@ fi
 echo "cidata drive found at $CIDATA_DEV - starting unattended install."
 
 # Pick the install target: first non-removable disk that isn't the medium
-# holding cidata itself. Strips a trailing partition-number suffix from the
-# cidata device to get its parent disk, so we don't ever target that disk by
-# mistake even if it also happens to look like a plain disk.
-CIDATA_PARENT=$(lsblk -no PKNAME "$CIDATA_DEV" 2>/dev/null | head -1)
+# holding cidata itself. CIDATA_DEV can be a partition (sdb1 -> parent sdb)
+# OR a whole disk with no partition table (cidata filesystem written
+# directly to e.g. sdb) - in the latter case PKNAME is empty, so we must
+# treat CIDATA_DEV's own name as the disk to exclude, not its (nonexistent)
+# parent. Getting this wrong means the exclusion silently does nothing and
+# the cidata medium itself could be wiped as the "target disk".
+CIDATA_BASENAME=$(basename "$CIDATA_DEV")
+CIDATA_SELF_TYPE=$(lsblk -no TYPE "$CIDATA_DEV" 2>/dev/null | head -1)
+if [ "$CIDATA_SELF_TYPE" = "disk" ]; then
+  CIDATA_DISK="$CIDATA_BASENAME"
+else
+  CIDATA_DISK=$(lsblk -no PKNAME "$CIDATA_DEV" 2>/dev/null | head -1)
+fi
+
+if [ -z "$CIDATA_DISK" ]; then
+  echo "ERROR: could not determine which disk backs the cidata medium ($CIDATA_DEV) - refusing to guess a target disk." >&2
+  exit 1
+fi
+
 TARGET_DISK=""
 while read -r name rm type; do
   [ "$type" = "disk" ] || continue
   [ "$rm" = "1" ] && continue
-  [ "$name" = "$CIDATA_PARENT" ] && continue
+  [ "$name" = "$CIDATA_DISK" ] && continue
   TARGET_DISK="/dev/$name"
   break
 done < <(lsblk -dno NAME,RM,TYPE)
 
 if [ -z "$TARGET_DISK" ]; then
-  echo "ERROR: could not find a target disk (excluding the cidata medium)." >&2
+  echo "ERROR: could not find a target disk (excluding the cidata medium $CIDATA_DISK)." >&2
   exit 1
 fi
 echo "Target disk: $TARGET_DISK"
@@ -71,16 +86,48 @@ fi
 BOOT_PART="${TARGET_DISK}${PART_SUFFIX}1"
 ROOT_PART="${TARGET_DISK}${PART_SUFFIX}2"
 
-python3 - "$CONFIG_SRC" "$CONFIG_RUN" "$TARGET_DISK" <<'PYEOF'
+# Dynamic root partition sizing: user_configuration.json's root size is a
+# placeholder that only matched the original test disk (~13.8GiB) - on a
+# bigger disk it wasted the rest, on a smaller one archinstall could fail
+# outright. Compute the real root length from the actual target disk here,
+# same way the "device" field is patched below. archinstall 4.0's Size/Unit
+# model (checked directly in its source, archinstall/lib/models/device.py)
+# has no percent/"fill remaining space" unit - length is a plain MiB value,
+# so the real size has to be computed ourselves, not expressed in the JSON.
+DISK_SIZE_MIB=$(( $(blockdev --getsize64 "$TARGET_DISK") / 1048576 ))
+BOOT_START_MIB=1
+BOOT_LEN_MIB=512
+ROOT_START_MIB=$(( BOOT_START_MIB + BOOT_LEN_MIB ))
+# 2 MiB trailing headroom for GPT backup header/alignment, same margin
+# parted/sgdisk themselves reserve at the end of a disk.
+ROOT_LEN_MIB=$(( DISK_SIZE_MIB - ROOT_START_MIB - 2 ))
+if [ "$ROOT_LEN_MIB" -lt 1024 ]; then
+  echo "ERROR: target disk $TARGET_DISK is only ${DISK_SIZE_MIB}MiB - too small for a usable PandOS install (need at least ~1.5GiB free for root beyond the boot partition)." >&2
+  exit 1
+fi
+echo "Target disk size: ${DISK_SIZE_MIB}MiB -> root partition length: ${ROOT_LEN_MIB}MiB"
+
+python3 - "$CONFIG_SRC" "$CONFIG_RUN" "$TARGET_DISK" "$ROOT_LEN_MIB" <<'PYEOF'
 import json, sys
-src, dst, disk = sys.argv[1:4]
+src, dst, disk, root_len_mib = sys.argv[1:5]
 cfg = json.load(open(src))
 cfg["disk_config"]["device_modifications"][0]["device"] = disk
+partitions = cfg["disk_config"]["device_modifications"][0]["partitions"]
+root_parts = [p for p in partitions if p.get("fs_type") == "btrfs"]
+if len(root_parts) != 1:
+    sys.exit(f"expected exactly one btrfs partition in the base config, found {len(root_parts)}")
+root_parts[0]["size"]["value"] = int(root_len_mib)
 json.dump(cfg, open(dst, "w"), indent=2)
 PYEOF
 
-archinstall --config "$CONFIG_RUN" --silent --skip-version-check --skip-ntp --skip-wkd
-RC=$?
+# Captured via if/else, not a bare command + $?, because under `set -e` a
+# failing plain command aborts the script immediately - before a following
+# `RC=$?` line would ever run. if/else is exempt from set -e.
+if archinstall --config "$CONFIG_RUN" --silent --skip-version-check --skip-ntp --skip-wkd; then
+  RC=0
+else
+  RC=$?
+fi
 echo "ARCHINSTALL_EXIT_CODE=$RC"
 if [ "$RC" -ne 0 ]; then
   echo "ERROR: archinstall failed, stopping before post-processing." >&2
@@ -122,7 +169,11 @@ rm -f /mnt/etc/fstab
 genfstab -U /mnt > /mnt/etc/fstab
 cat /mnt/etc/fstab
 
-umount -R /mnt
+# `|| true`: a busy final unmount here doesn't indicate data loss (every
+# write above already landed via its own mount/arch-chroot call finishing
+# successfully under set -e) and systemd will force-detach on reboot anyway -
+# it must not block reaching POST_PROCESSING_OK and the reboot itself.
+umount -R /mnt || true
 
 echo "=== POST_PROCESSING_OK ==="
 echo "Install complete. Rebooting in 10s (remove installation media now)."

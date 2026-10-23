@@ -35,6 +35,16 @@ in QEMU that was hit and fixed, are in
 [`tests/qemu-boot-verification.md`](tests/qemu-boot-verification.md)
 ("Scenario B" section).
 
+**Hardening alpha — in progress, no deadline (started 2026-10-23):**
+following Codex's 2026-10-23 review, fixed and verified one at a time:
+the autoinstaller's disk-selection bug, missing `set -e` around
+post-processing, hardcoded partition sizing, and the default-browser
+decision (`epiphany`) — the last one also surfaced and fixed a real,
+unrelated `archinstall` upstream regression along the way. Full detail in
+[`tests/hardening-alpha-verification.md`](tests/hardening-alpha-verification.md).
+Test credentials (`pandos`/`pandos`, root SSH) deferred on purpose, not
+forgotten. Priority here is doing it right, not doing it fast.
+
 This file grows with the project and is the source of truth for decisions —
 every significant architectural decision and its verification (or
 rejection) lands here, with a date and a source.
@@ -120,12 +130,25 @@ wiki) — use 3.0.5+.
 `get_default_btrfs_subvols()` function in
 `archinstall/lib/disk/default_layouts.py`, checked in source on the
 `master` branch) is `@`→`/`, `@home`→`/home`, `@log`→`/var/log`,
-`@pkg`→`/var/cache/pacman/pkg` — **without** `@snapshots`. It has to be
-explicitly overridden in the JSON config (the `btrfs` field on the root
-partition, a list of `{"name": ..., "mountpoint": ...}` objects, the
-`SubvolumeModification` dataclass in `archinstall/lib/models/device.py`),
-adding `@snapshots`→`/.snapshots` to the default list. Final list in use:
-`@`, `@home`, `@log`, `@pkg`, `@snapshots`.
+`@pkg`→`/var/cache/pacman/pkg` — **without** `@snapshots`.
+
+**Correction (2026-10-24):** an earlier version of this section said
+`@snapshots` gets added to this same JSON list. That was the original plan,
+but it doesn't work in practice — tried in `pandos-config/user_configuration.json`
+during the fast-loop test, it made `archinstall` auto-mount `@snapshots` during
+disk setup, which then collided with our own `snapper create-config` step
+("subvolume already covered" — obstacle #5/#6 in
+[`tests/full-config-verification.md`](tests/full-config-verification.md)).
+**`@snapshots` is deliberately left out of the JSON's `btrfs` list on purpose
+and created in post-processing instead** (by both
+`pandos-config/run-fast-loop.sh` and the ISO's own
+`autoinstall.sh`), as a top-level sibling of `@`, after `archinstall` exits.
+The JSON's own `btrfs` list stays `@`, `@home`, `@log`, `@pkg` — anyone
+running `archinstall --config user_configuration.json` by hand, without the
+post-processing step, will get a working system but without the
+`@snapshots` subvolume (no snapshot browsing via `btrfs-assistant`/`snapper`
+until that step is also run) — see the "by hand" instructions in
+`pandos-iso/.../autoinstall.sh`'s own motd for the exact manual command.
 
 ### Rollback mechanism — EMPIRICALLY CONFIRMED (2026-10-22)
 
@@ -187,8 +210,22 @@ autostart.
 be finalized for the final product — the test VM uses `grub` for
 simplicity, see `tests/`).
 
-**Open, undecided:** which browser to preinstall (nothing chosen yet — to
-be decided, not guessed).
+**Default browser — DECIDED (2026-10-23/24): `epiphany`.** Not optional:
+PandaCode's own source (cloned locally for reference, `open_external_url`
+in `src-tauri/src/lib.rs`, called from `agent-input.ts`, `github-hub.ts`,
+`github.ts`, `overlay.ts`, `main.ts`) shells out to `xdg-open` for every
+external link in its UI — agent messages, GitHub issues/PRs, docs — which
+simply fails with no browser installed. `epiphany` was chosen over
+Firefox because it shares the WebKit engine PandaCode's own Tauri webview
+already needs (`webkitgtk` in PandaCode's `Cargo.toml`) instead of adding
+a second, heavier engine, and its real dependency list (checked against
+the Arch package API) is plain GTK4/libadwaita/webkitgtk-6.0 — official
+`extra` repo, no AUR, no hard GNOME-session requirement that would
+conflict with COSMIC. Added to `packages` in `user_configuration.json`
+(both copies — see `tests/hardening-alpha-verification.md`) and confirmed
+installed (`pacman -Q epiphany` on the built system) in that same test. A
+full visual launch inside an authenticated COSMIC session is the one part
+left honestly unverified — see that file's last section.
 
 ## Open decisions
 

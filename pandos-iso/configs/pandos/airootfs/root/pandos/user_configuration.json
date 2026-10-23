@@ -126,7 +126,8 @@
     "networkmanager",
     "cosmic-session",
     "fuse2",
-    "git"
+    "git",
+    "epiphany"
   ],
   "pacman_config": {
     "color": false,

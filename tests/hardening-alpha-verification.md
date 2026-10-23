@@ -246,6 +246,48 @@ already-documented cosmetic issues recurred (`snapper list-configs`
 missing `--no-dbus` in the verify line; harmless "umount target busy"
 at the very end) — no new problems.
 
+## 6. PandaCode `latest` pull with no checksum — FIXED, verified
+
+**Files:** `pandos-config/user_configuration.json` and the ISO's bundled
+copy (both edited identically, confirmed via `diff` afterwards).
+
+**Problem:** `custom_commands` pulled
+`releases/latest/download/PandaCode-Linux-x86_64.AppImage` with no version
+pin and no integrity check — an upstream release could silently change
+what lands on every future build, or a corrupted/tampered download would
+go unnoticed.
+
+**Checked first, not assumed:** queried the real GitHub releases API
+(`api.github.com/repos/aicodeking/pandacode/releases/latest`) — current
+release is `v0.3.32`, and it genuinely publishes a `.sha256` file per
+binary asset (`PandaCode-Linux-x86_64.AppImage.sha256`, standard
+`sha256sum`-compatible format: `<hash>  <filename>`). Fetched that file
+directly and cross-checked its hash against what got pinned into the
+config — identical.
+
+**Fix:** pinned `PANDACODE_VERSION="v0.3.32"` (an explicit tag in the URL,
+not `latest`) and `PANDACODE_SHA256` to the real published hash; after the
+download, `echo "$PANDACODE_SHA256  /opt/pandacode/PandaCode.AppImage" |
+sha256sum -c -` before `chmod +x`.
+
+**Verification:**
+- Both JSON files still parse as valid JSON after the edit (the first
+  attempt at this edit used a Python string with a literal `\n` instead
+  of the two characters `\`+`n` needed to represent a JSON-escaped
+  newline as raw text, which corrupted the file — caught immediately by
+  parsing it back with `json.load` before moving on, and fixed before
+  anything was committed).
+- Decoded `custom_commands` back out of the JSON and printed the actual
+  bash PandaCode will run at install time — matches intent exactly.
+- Isolated `sha256sum -c` test: a correct hash against a fake file passes
+  and the script continues; an incorrect-but-well-formed 64-hex-char hash
+  prints `FAILED`, returns exit 1, and (under `set -e`, which
+  `custom_commands` already has) aborts before the next command runs —
+  confirmed a bad/corrupted download cannot silently continue to
+  `chmod +x`.
+- Confirmed the pinned hash still matches a fresh fetch from GitHub at
+  verification time (not just trusted once).
+
 ## One small process note for later
 
 - The ISO's bundled `user_configuration.json`

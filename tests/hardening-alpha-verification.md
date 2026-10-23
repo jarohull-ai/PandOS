@@ -227,10 +227,24 @@ one field normalized), confirmed nothing else in the file changes.
 `bash -n` confirmed both scripts stay syntactically valid.
 `grep -n loop10 run-fast-loop.sh` shows only the comments and the
 backward-compat fallback default — no more hardcoded device paths in any
-actual command. A full real rebuild through `build-fast-loop.sh` itself
-was not run as part of this fix (it needs interactive `sudo`, which this
-session can't provide) — left for Jaro to run directly when convenient,
-not claimed as end-to-end proven here.
+actual command.
+
+**End-to-end confirmation (run by Jaro directly, needs interactive
+`sudo` which this session can't provide):** `sudo
+pandos-config/build-fast-loop.sh` completed a full real rebuild —
+attached as `/dev/loop36` (not `/dev/loop10`, proving the dynamic
+selection actually ran), `archinstall` succeeded, all expected
+subvolumes present (`@`, `@home`, `@log`, `@pkg`, `@snapshots`), PandaCode
+AppImage and desktop file present, both markers present,
+`POST_PROCESSING_OK` printed. The run also hit a second real bug this
+fix exposed: `run-fast-loop.sh` had no `#!/bin/bash` shebang, so `docker
+run ... /work/run-fast-loop.sh` tried to exec it as a binary and failed
+with "exec format error" — fixed by adding the shebang and having
+`build-fast-loop.sh` invoke it as `bash /work/run-fast-loop.sh` instead
+of relying on the exec bit alone (commit `14db548`). Only the two
+already-documented cosmetic issues recurred (`snapper list-configs`
+missing `--no-dbus` in the verify line; harmless "umount target busy"
+at the very end) — no new problems.
 
 ## One small process note for later
 

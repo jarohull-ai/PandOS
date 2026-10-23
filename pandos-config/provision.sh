@@ -48,10 +48,15 @@ systemctl enable grub-btrfsd.service
 cp /etc/greetd/cosmic-greeter.toml /etc/greetd/config.toml
 systemctl enable greetd.service
 
-# --- PandaCode ---
+# --- PandaCode (pinned version + sha256, not 'latest' - confirmed via
+# the GitHub releases API that aicodeking/pandacode publishes a
+# matching .sha256 file per asset) ---
 mkdir -p /opt/pandacode
+PANDACODE_VERSION="v0.3.32"
+PANDACODE_SHA256="7304b756182fb424e86a3a702b273ad915b780955aa90eeb2b2b53c06317caa4"
 curl -fL -o /opt/pandacode/PandaCode.AppImage \
-  https://github.com/aicodeking/pandacode/releases/latest/download/PandaCode-Linux-x86_64.AppImage
+  "https://github.com/aicodeking/pandacode/releases/download/${PANDACODE_VERSION}/PandaCode-Linux-x86_64.AppImage"
+echo "${PANDACODE_SHA256}  /opt/pandacode/PandaCode.AppImage" | sha256sum -c -
 chmod +x /opt/pandacode/PandaCode.AppImage
 
 cat > /usr/share/applications/pandacode.desktop <<'EOF'

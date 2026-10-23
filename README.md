@@ -286,8 +286,16 @@ measurements, not assumed upfront.
 ## Repo structure
 
 `pandos-config/` (`archinstall`: `user_configuration.json`, `provision.sh`,
-`run-fast-loop.sh`, `docs/`) and `pandos-iso/` (`archiso`:
-`configs/pandos/`, `test-qemu-boot.sh`) both already exist and work — the
-fast loop, the slow loop, and installing from the ISO are all three
-verified (`tests/full-config-verification.md`,
+`sync-provision.py`, `build-fast-loop.sh`, `run-fast-loop.sh`, `docs/`) and
+`pandos-iso/` (`archiso`: `configs/pandos/`, `test-qemu-boot.sh`) both
+already exist and work — the fast loop, the slow loop, and installing from
+the ISO are all three verified (`tests/full-config-verification.md`,
 `tests/qemu-boot-verification.md`).
+
+**`provision.sh` is the only place to edit the provisioning script** — it's
+embedded into both `user_configuration.json` copies' `custom_commands`
+field by `python3 pandos-config/sync-provision.py` (run after every edit).
+Before this existed, the same bash was hand-duplicated across four files
+(two JSON copies plus two now-deleted `provision.sh` mirrors) and drifted
+the first time one of them got edited alone — see
+`tests/hardening-alpha-verification.md` §7.

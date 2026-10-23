@@ -288,6 +288,48 @@ sha256sum -c -` before `chmod +x`.
 - Confirmed the pinned hash still matches a fresh fetch from GitHub at
   verification time (not just trusted once).
 
+## 7. `provision.sh` vs `custom_commands` drift — FIXED, verified
+
+**Context:** flagged by a pasted AI-generated review of the repo (checked
+claim by claim against the real code before acting on any of it, per
+standard practice here — all six of its points held up, this one most
+directly).
+
+**Problem, confirmed worse than first described:** `provision.sh` was
+never one file duplicated against the JSON — it was **two** identical
+copies (`pandos-config/provision.sh` and
+`pandos-iso/configs/pandos/airootfs/root/pandos/provision.sh`), and
+neither was ever executed by anything (`grep` for `provision.sh` inside
+`autoinstall.sh`/`run-fast-loop.sh` found zero real invocations — both
+copies existed purely as a human-readable mirror of the JSON's embedded
+`custom_commands` string, which is otherwise unreadable one-line
+escaped text). That meant **four** files carried the same bash with no
+mechanism keeping them in sync. This drifted for real: fixing §6
+(PandaCode version pin + sha256) edited both JSON copies correctly but
+missed both `provision.sh` mirrors, which an AI report caught by reading
+the actual file contents, not by trusting the README's claim that they
+were "the same content."
+
+**Fix:** `pandos-config/sync-provision.py` — a small generator that reads
+`provision.sh` once and writes it into both `user_configuration.json`
+copies' `custom_commands` field. `provision.sh` is now the single
+editable source; the JSON files are a build output, never hand-edited
+directly. Deleted the now-pointless second `provision.sh` copy from the
+ISO's `airootfs` tree (`git rm`) instead of also keeping it in sync —
+it had no function beyond being a second mirror of the same text.
+
+**Verification:**
+- Rewrote `pandos-config/provision.sh` from the JSON's current (already
+  correct, §6-fixed) `custom_commands` string and confirmed byte-exact
+  equality (`script == on_disk`), so the canonical source starts from the
+  known-good state, not a guess.
+- Ran `sync-provision.py` against that and confirmed via `git diff
+  --stat` that it produced **zero changes** to either JSON file —
+  proves the generator is idempotent and faithfully reproduces what's
+  already there before any further edits happen.
+- Both `user_configuration.json` files still parse as valid JSON
+  afterward.
+
 ## One small process note for later
 
 - The ISO's bundled `user_configuration.json`

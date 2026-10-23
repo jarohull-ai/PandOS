@@ -40,4 +40,4 @@ docker run --rm --privileged \
   -v "$SCRIPT_DIR":/work \
   -v /dev:/dev \
   -e LOOP_DEV="$LOOP_DEV" \
-  "$CONTAINER_IMAGE" /work/run-fast-loop.sh
+  "$CONTAINER_IMAGE" bash /work/run-fast-loop.sh

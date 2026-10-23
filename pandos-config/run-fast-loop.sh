@@ -1,3 +1,4 @@
+#!/bin/bash
 set -x
 
 # LOOP_DEV is the real loop device the host attached via `losetup -f` (see

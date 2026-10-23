@@ -89,7 +89,11 @@ Two loops at different speeds, not one single mechanism:
   container (`ghcr.io/archlinux/archlinux:latest`, `--privileged`), since
   the dev machine isn't Arch itself. The loop device doesn't work inside
   the container — `losetup` is done on the host, and the ready `/dev/loopX`
-  is passed into the container.
+  is passed into the container. Run via
+  `sudo pandos-config/build-fast-loop.sh` — it picks the first free loop
+  device itself (`losetup -f`), never a hardcoded number (see
+  `tests/hardening-alpha-verification.md` §5 for why that mattered), and
+  detaches it again on exit.
 - **Slow loop ("print to an ISO"):** a fork of archiso's `releng` profile
   (which already ships `archinstall` in its `packages.x86_64` — checked
   directly in the source at gitlab.archlinux.org/archlinux/archiso) + a

@@ -1,5 +1,14 @@
 set -x
 
+# LOOP_DEV is the real loop device the host attached via `losetup -f` (see
+# build-fast-loop.sh) - never a hardcoded number. A hardcoded /dev/loop10
+# previously collided with a loop device snapd already had claimed on a
+# host with many snaps installed (confirmed: snapd claims loop0-N
+# sequentially). Falls back to /dev/loop10 only for a script invoked
+# directly without the driver, to keep old manual invocations working.
+LOOP_DEV="${LOOP_DEV:-/dev/loop10}"
+echo "Using loop device: $LOOP_DEV"
+
 pacman -Sy --noconfirm archlinux-keyring
 pacman -Syu --noconfirm --needed archinstall arch-install-scripts btrfs-progs parted udev
 
@@ -106,6 +115,24 @@ WRAP
 fi
 
 cd /work
+
+# Patch the JSON's device field to the real loop device right before
+# archinstall reads it - the field can't hold an env var itself (plain
+# JSON), so this is done the same way autoinstall.sh patches its own
+# "device" field for the real installer target disk.
+python3 - "user_configuration.json" "$LOOP_DEV" <<'PYEOF'
+import json, sys
+path, dev = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    cfg = json.load(f)
+cfg["disk_config"]["device_modifications"][0]["device"] = dev
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+PYEOF
+
+ROOT_PART="${LOOP_DEV}p2"
+BOOT_PART="${LOOP_DEV}p1"
+
 set -e
 archinstall --config user_configuration.json --silent \
   --skip-version-check --skip-ntp --skip-wkd
@@ -116,12 +143,12 @@ set -ex
 umount -R /mnt 2>/dev/null || true
 
 mkdir -p /mnt
-mount -o subvol=/@ /dev/loop10p2 /mnt
-mount --mkdir -o subvol=/@home /dev/loop10p2 /mnt/home
-mount --mkdir -o subvol=/@log /dev/loop10p2 /mnt/var/log
+mount -o subvol=/@ "$ROOT_PART" /mnt
+mount --mkdir -o subvol=/@home "$ROOT_PART" /mnt/home
+mount --mkdir -o subvol=/@log "$ROOT_PART" /mnt/var/log
 mkdir -p /mnt/var/cache/pacman
-mount --mkdir -o subvol=/@pkg /dev/loop10p2 /mnt/var/cache/pacman/pkg
-mount --mkdir /dev/loop10p1 /mnt/boot
+mount --mkdir -o subvol=/@pkg "$ROOT_PART" /mnt/var/cache/pacman/pkg
+mount --mkdir "$BOOT_PART" /mnt/boot
 
 arch-chroot /mnt /bin/bash -ex <<'CHROOT2'
 # provision.sh (custom_commands, run earlier in this same archinstall pass)
@@ -136,11 +163,11 @@ test -d /.snapshots && rmdir /.snapshots
 CHROOT2
 
 mkdir -p /mnt_top
-mount -o subvolid=5 /dev/loop10p2 /mnt_top
+mount -o subvolid=5 "$ROOT_PART" /mnt_top
 btrfs subvolume create /mnt_top/@snapshots
 umount /mnt_top
 mkdir -p /mnt/.snapshots
-mount -o subvol=/@snapshots /dev/loop10p2 /mnt/.snapshots
+mount -o subvol=/@snapshots "$ROOT_PART" /mnt/.snapshots
 
 arch-chroot /mnt /bin/bash -ex <<'CHROOT3'
 snapper --no-dbus -c root list

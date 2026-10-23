@@ -187,14 +187,53 @@ cosmic-session-related smaller tests above are decent secondary evidence
 (no dependency conflict, no crash-on-missing-library), but not a
 substitute for watching it actually render under a real login.
 
-## Two small process notes for later
+## 5. Hardcoded `/dev/loop10` in the fast loop — FIXED, verified
 
-- `pandos-config/run-fast-loop.sh`/`user_configuration.json` hardcode
-  `/dev/loop10` as the build loop device. On a host with many installed
-  snaps (`snapd` claims loop devices sequentially from 0 up — this host
-  had 36 of them), that number can collide with a real, in-use snapd
-  loop mount. Should use `losetup -f` (first free) instead of a fixed
-  number.
+**Files:** new `pandos-config/build-fast-loop.sh` (host-side driver, added
+here); `pandos-config/run-fast-loop.sh` (parameterized).
+
+**Problem:** the build loop device was a literal `/dev/loop10` in both
+`run-fast-loop.sh`'s mount commands and `user_configuration.json`'s
+`disk_config.device`. On a host with many installed snaps (`snapd` claims
+loop devices sequentially from 0 up — this host had 36 of them), that
+number can collide with a real, in-use snapd loop mount, which already
+happened once this session (a near-miss, documented separately — harmless
+only because the colliding mount happened to be stale).
+
+**Fix:**
+- New `pandos-config/build-fast-loop.sh`: creates/reuses the raw disk
+  image, attaches it with `losetup -f --show -P` (first free device,
+  never a fixed number), runs `run-fast-loop.sh` inside the privileged
+  Arch container with that device passed in as `$LOOP_DEV`, and detaches
+  it on exit via a `trap` (success or failure). Needs root for `losetup`,
+  so it must be run with `sudo` — this host has no passwordless sudo
+  configured, confirmed by `sudo -l -n` failing, so it's left as an
+  explicit `sudo` invocation rather than something a non-interactive
+  agent session can run on its own.
+- `run-fast-loop.sh`: reads `LOOP_DEV` from the environment (falls back to
+  `/dev/loop10` only if invoked directly without the driver, for backward
+  compatibility), patches `user_configuration.json`'s `device` field to
+  the real value at runtime (same technique `autoinstall.sh` already uses
+  for the real installer's target disk — JSON has no env-var
+  substitution, so this has to happen in code), and every mount command
+  that referenced `/dev/loop10p1`/`p2` directly now uses `$BOOT_PART`/
+  `$ROOT_PART` derived from `$LOOP_DEV`.
+
+**Verification:** the real JSON-patch logic was extracted and run in
+isolation against a copy of the actual `user_configuration.json`, patched
+to a fake `/dev/loop23` — confirmed the `device` field updates correctly
+and, by diffing the full parsed JSON against the original (with only that
+one field normalized), confirmed nothing else in the file changes.
+`bash -n` confirmed both scripts stay syntactically valid.
+`grep -n loop10 run-fast-loop.sh` shows only the comments and the
+backward-compat fallback default — no more hardcoded device paths in any
+actual command. A full real rebuild through `build-fast-loop.sh` itself
+was not run as part of this fix (it needs interactive `sudo`, which this
+session can't provide) — left for Jaro to run directly when convenient,
+not claimed as end-to-end proven here.
+
+## One small process note for later
+
 - The ISO's bundled `user_configuration.json`
   (`pandos-iso/configs/pandos/airootfs/root/pandos/user_configuration.json`)
   is a separate copy of `pandos-config/user_configuration.json`, not a
